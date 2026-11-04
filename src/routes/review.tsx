@@ -1076,6 +1076,9 @@ function BackBody(props: {
 }) {
   const preview = previewIntervals(props.card, props.now, props.fsrsParams);
   const isNew = props.card.reps === 0;
+  const easyVals: Record<string, unknown> = { rating: 4, source: props.source };
+  if (props.responseMs != null) easyVals['response_ms'] = props.responseMs;
+  if (props.reviewKey) easyVals['review_key'] = props.reviewKey;
 
   return (
     <>
@@ -1090,11 +1093,20 @@ function BackBody(props: {
       </div>
 
       <div class="border-t border-line px-6 py-5 sm:px-10">
-        <div class={isNew ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-4'}>
+        <p class="text-center text-sm font-medium">
+          {isNew ? '방금 본 뜻이 기억나나요?' : '답을 보기 전에 뜻이 떠올랐나요?'}
+        </p>
+        <p class="mt-1 text-center text-xs leading-5 text-muted">
+          {isNew
+            ? '방금 본 뒤 바로 가렸을 때 기준입니다.'
+            : '답을 본 뒤의 느낌이 아니라, 보기 전에 떠올린 기준입니다.'}
+        </p>
+
+        <div class={isNew ? 'mt-4 grid grid-cols-2 gap-2' : 'mt-4 grid grid-cols-3 gap-2'}>
           <RateButton
             cardId={props.card.id}
             rating={1}
-            label="다시"
+            label="모름"
             preview={preview[1]}
             tone="again"
             responseMs={props.responseMs}
@@ -1105,7 +1117,7 @@ function BackBody(props: {
             <RateButton
               cardId={props.card.id}
               rating={2}
-              label="어려움"
+              label="늦게 떠오름"
               preview={preview[2]}
               tone="hard"
               responseMs={props.responseMs}
@@ -1116,25 +1128,29 @@ function BackBody(props: {
           <RateButton
             cardId={props.card.id}
             rating={3}
-            label="알맞음"
+            label="바로 떠오름"
             preview={preview[3]}
             tone="good"
             responseMs={props.responseMs}
             reviewKey={props.reviewKey}
             source={props.source}
           />
-          <RateButton
-            cardId={props.card.id}
-            rating={4}
-            label="쉬움"
-            preview={preview[4]}
-            tone="easy"
-            responseMs={props.responseMs}
-            reviewKey={props.reviewKey}
-            source={props.source}
-          />
         </div>
-        <p class="mt-3 text-center text-xs text-muted">{isNew ? '1 · 3 · 4' : '1 · 2 · 3 · 4'}</p>
+
+        <button
+          type="button"
+          data-act="rate"
+          data-rating="4"
+          hx-post={`/review/${props.card.id}`}
+          hx-vals={JSON.stringify(easyVals)}
+          hx-target="#review-root"
+          hx-swap="innerHTML"
+          class="mt-3 w-full text-center text-xs text-muted underline-offset-4 hover:text-accent hover:underline"
+        >
+          아주 쉬웠어요 · 다음 복습 {preview[4]}
+        </button>
+
+        <p class="mt-2 text-center text-xs text-muted">{isNew ? '1 · 3 · 4' : '1 · 2 · 3 · 4'}</p>
       </div>
     </>
   );
@@ -1145,7 +1161,7 @@ function RateButton(props: {
   rating: number;
   label: string;
   preview: string;
-  tone: 'again' | 'hard' | 'good' | 'easy';
+  tone: 'again' | 'hard' | 'good';
   responseMs: number | null;
   reviewKey: string | null;
   source: ReviewSource;
@@ -1154,7 +1170,6 @@ function RateButton(props: {
     again: 'border-danger/40 text-danger hover:bg-danger/5',
     hard: 'border-line text-muted hover:border-ink/30',
     good: 'border-accent bg-accent text-white hover:opacity-90',
-    easy: 'border-accent/40 text-accent hover:bg-accent-soft',
   };
 
   const vals: Record<string, unknown> = { rating: props.rating, source: props.source };
@@ -1172,8 +1187,8 @@ function RateButton(props: {
       hx-swap="innerHTML"
       class={`rounded border px-3 py-3 text-center transition-colors ${tones[props.tone]}`}
     >
-      <span class="block text-sm font-medium">{props.label}</span>
-      <span class={`block text-xs ${props.tone === 'good' ? 'text-white/70' : 'text-muted'}`}>
+      <span class="block text-sm font-medium leading-tight">{props.label}</span>
+      <span class={`mt-0.5 block text-xs ${props.tone === 'good' ? 'text-white/70' : 'text-muted'}`}>
         {props.preview}
       </span>
     </button>
