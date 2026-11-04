@@ -3,7 +3,7 @@
 영어 단어 학습 PWA. **단어를 외우는 게 아니라, 기억하게 만든다.**
 매일 정해진 양만, 잊어버릴 때쯤 다시. 광고 없고, 가볍고, 오프라인에서도 열립니다.
 
-**배포:** https://english-learning.choidaruhan.workers.dev
+**배포:** https://wordy.choidaruhan.workers.dev
 
 ---
 
@@ -76,7 +76,7 @@ npm run dev:css       # Tailwind watch
 
 ```bash
 # 1. D1 생성 후 출력된 database_id를 wrangler.jsonc 에 붙여넣기
-npx wrangler d1 create english-learning-db
+npx wrangler d1 create wordy-db
 
 # 2. 스키마 적용
 npm run db:remote

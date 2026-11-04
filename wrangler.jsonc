@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "english-learning",
+  "name": "wordy",
   "main": "src/index.tsx",
   "compatibility_date": "2026-10-01",
   "observability": {
@@ -14,8 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "english-learning-db",
-      "database_id": "b996564e-b05d-4178-a396-3adba976a7f2",
+      "database_name": "wordy-db",
+      "database_id": "2298df33-cdfd-4b3b-8738-dff8486b124c",
       "migrations_dir": "migrations"
     }
   ]

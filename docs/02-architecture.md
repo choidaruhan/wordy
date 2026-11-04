@@ -32,7 +32,7 @@
 ## 폴더 구조
 
 ```
-english-learning/
+wordy/
 ├── wrangler.jsonc
 ├── package.json
 ├── tsconfig.json
@@ -79,7 +79,7 @@ english-learning/
 ```jsonc
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "english-learning",
+  "name": "wordy",
   "main": "src/index.tsx",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
@@ -93,7 +93,7 @@ english-learning/
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "english-learning-db",
+      "database_name": "wordy-db",
       "database_id": "<wrangler d1 create 로 발급받은 ID>",
       "migrations_dir": "migrations"
     }

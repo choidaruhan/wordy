@@ -9,8 +9,8 @@
     "dev:css": "tailwindcss -i src/styles/input.css -o public/styles.css --watch",
     "dev": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
-    "db:local": "wrangler d1 migrations apply english-learning-db --local",
-    "db:remote": "wrangler d1 migrations apply english-learning-db --remote",
+    "db:local": "wrangler d1 migrations apply wordy-db --local",
+    "db:remote": "wrangler d1 migrations apply wordy-db --remote",
     "check:seed": "node scripts/check-seed.mjs public/seeds/basic-1000.csv --expect 1000 && node scripts/check-seed.mjs public/seeds/function-100.csv --expect 100",
     "typecheck": "tsc --noEmit",
     "make:icons": "node scripts/make-icons.mjs"

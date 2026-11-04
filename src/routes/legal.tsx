@@ -7,7 +7,7 @@ const legal = new Hono<Env>();
 /** 운영자 정보. 바꿀 때는 여기만 수정한다. */
 const SITE = {
   name: 'Wordy',
-  url: 'https://english-learning.choidaruhan.workers.dev',
+  url: 'https://wordy.choidaruhan.workers.dev',
   email: 'chl11wq12@gmail.com',
   effectiveDate: '2026년 11월 4일',
 };
