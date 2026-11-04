@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>오프라인 · Wordy</title>
+    <meta name="theme-color" content="#12694f" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f3f5f3;
+        color: #16211e;
+        font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+          system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 26rem;
+        text-align: center;
+      }
+      .mark {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 24px;
+        border-radius: 14px;
+        background: #12694f;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font: 600 26px/1 ui-serif, Georgia, serif;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      p {
+        margin: 12px 0 0;
+        font-size: 14px;
+        line-height: 1.7;
+        color: #5f6c68;
+      }
+      button {
+        margin-top: 24px;
+        padding: 12px 24px;
+        border: 1px solid #d9dfdc;
+        border-radius: 3px;
+        background: #fff;
+        color: inherit;
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #12694f;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark">W</div>
+      <h1>오프라인입니다</h1>
+      <p>
+        학습을 계속하려면 연결이 필요합니다. 저장된 화면은 다시 열 수 있지만,
+        카드 기록은 서버에 저장됩니다.
+      </p>
+      <button type="button" onclick="location.reload()">다시 시도</button>
+    </main>
+  </body>
+</html>

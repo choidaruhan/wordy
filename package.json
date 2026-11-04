@@ -1,0 +1,35 @@
+{
+  "name": "wordy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "copy:htmx": "node scripts/copy-htmx.mjs",
+    "build:css": "tailwindcss -i src/styles/input.css -o public/styles.css --minify",
+    "build": "npm run copy:htmx && npm run build:css",
+    "dev:css": "tailwindcss -i src/styles/input.css -o public/styles.css --watch",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:local": "wrangler d1 migrations apply english-learning-db --local",
+    "db:remote": "wrangler d1 migrations apply english-learning-db --remote",
+    "check:seed": "node scripts/check-seed.mjs public/seeds/basic-1000.csv --expect 1000 && node scripts/check-seed.mjs public/seeds/function-100.csv --expect 100",
+    "typecheck": "tsc --noEmit",
+    "make:icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.13.16",
+    "ts-fsrs": "^6.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261103.1",
+    "@tailwindcss/cli": "^4.3.4",
+    "htmx.org": "^2.0.11",
+    "tailwindcss": "^4.3.4",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.157.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261103.1": true,
+    "@parcel/watcher@2.6.0": true
+  }
+}

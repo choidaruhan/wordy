@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "english-learning",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-10-01",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "none"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "english-learning-db",
+      "database_id": "b996564e-b05d-4178-a396-3adba976a7f2",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
