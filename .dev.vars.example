@@ -1,0 +1,9 @@
+# cp .dev.vars.example .dev.vars
+
+# 로컬 개발 계정 로그인 버튼 (운영에서는 켜지 않습니다)
+DEV_LOGIN=true
+
+# Google OAuth (로컬 테스트용)
+# 승인된 리디렉션 URI: http://localhost:8787/auth/google/callback
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

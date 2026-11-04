@@ -13,6 +13,11 @@ export type User = {
   tz_offset_min: number;
   daily_new: number;
   daily_review: number;
+  new_card_mode: 'auto' | 'fixed';
+  listening_enabled: boolean;
+  voice_locale: 'en-US' | 'en-GB';
+  voice_rate: number;
+  fsrs_params: number[] | null;
 };
 
 export type Env = {
@@ -36,6 +41,14 @@ export type WordRow = {
   pos: string | null;
   example: string | null;
   example_ko: string | null;
+  category: string | null;
+  level: string | null;
+  pronunciation: string | null;
+  audio_url: string | null;
+  collocations: string | null;
+  synonyms: string | null;
+  antonyms: string | null;
+  extra_examples_raw: string | null;
   due_at: string | null;
   state: string | null;
 };
@@ -43,7 +56,6 @@ export type WordRow = {
 export type Stats = {
   total: number;
   decks: number;
-  due: number;
   learned: number;
   hard: number;
 };

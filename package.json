@@ -12,6 +12,7 @@
     "db:local": "wrangler d1 migrations apply wordy-db --local",
     "db:remote": "wrangler d1 migrations apply wordy-db --remote",
     "check:seed": "node scripts/check-seed.mjs public/seeds/basic-1000.csv --expect 1000 && node scripts/check-seed.mjs public/seeds/function-100.csv --expect 100",
+    "test": "node --test scripts/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "make:icons": "node scripts/make-icons.mjs"
   },
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261103.1",
     "@tailwindcss/cli": "^4.3.4",
+    "esbuild": "^0.28.2",
     "htmx.org": "^2.0.11",
     "tailwindcss": "^4.3.4",
     "typescript": "^5.9.3",

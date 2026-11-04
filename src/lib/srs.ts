@@ -1,4 +1,11 @@
-import { fsrs, generatorParameters, State, type Card, type Grade } from 'ts-fsrs';
+import {
+  fsrs,
+  generatorParameters,
+  State,
+  type Card,
+  type FSRSParameters,
+  type Grade,
+} from 'ts-fsrs';
 
 export type CardRow = {
   id: string;
@@ -27,16 +34,54 @@ const NAME_BY_STATE: Record<number, string> = {
   [State.Relearning]: 'relearning',
 };
 
-const scheduler = fsrs(
-  generatorParameters({
-    request_retention: 0.9,
-    maximum_interval: 1095,
-    enable_fuzz: true,
-    enable_short_term: true,
-    learning_steps: ['1m', '10m'],
-    relearning_steps: ['10m'],
-  })
-);
+export const FSRS_PARAM_LENGTH = 21;
+
+const BASE_PARAMS: Partial<FSRSParameters> = {
+  request_retention: 0.9,
+  maximum_interval: 1095,
+  enable_fuzz: true,
+  enable_short_term: true,
+  learning_steps: ['1m', '10m'],
+  relearning_steps: ['10m'],
+};
+
+const schedulerCache = new Map<string, ReturnType<typeof fsrs>>();
+
+/** 사용자별 FSRS 가중치로 스케줄러를 만든다. 실패하면 기본값으로 돌아간다. */
+function getScheduler(params?: number[] | null): ReturnType<typeof fsrs> {
+  const valid = params && params.length === FSRS_PARAM_LENGTH ? params : null;
+  const key = valid ? valid.join(',') : 'default';
+
+  const cached = schedulerCache.get(key);
+  if (cached) return cached;
+
+  try {
+    const scheduler = fsrs(
+      generatorParameters(valid ? { ...BASE_PARAMS, w: valid } : BASE_PARAMS)
+    );
+    schedulerCache.set(key, scheduler);
+    return scheduler;
+  } catch {
+    if (valid) return getScheduler(null);
+    throw new Error('FSRS 스케줄러를 초기화할 수 없습니다.');
+  }
+}
+
+/** DB에 저장된 JSON 문자열을 FSRS 가중치 배열로 파싱한다. 잘못된 값은 null. */
+export function parseFsrsParams(value: unknown): number[] | null {
+  if (!value) return null;
+
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!Array.isArray(parsed) || parsed.length !== FSRS_PARAM_LENGTH) return null;
+    if (!parsed.every((item) => typeof item === 'number' && Number.isFinite(item))) {
+      return null;
+    }
+    return parsed as number[];
+  } catch {
+    return null;
+  }
+}
 
 export function rowToCard(row: CardRow): Card {
   return {
@@ -65,8 +110,13 @@ export type Scheduled = {
   elapsed_days: number;
 };
 
-export function schedule(row: CardRow, now: Date, rating: Grade): Scheduled {
-  const out = scheduler.next(rowToCard(row), now, rating);
+export function schedule(
+  row: CardRow,
+  now: Date,
+  rating: Grade,
+  params?: number[] | null
+): Scheduled {
+  const out = getScheduler(params).next(rowToCard(row), now, rating);
   const c = out.card;
 
   const elapsed = row.last_reviewed_at
@@ -93,8 +143,13 @@ export function schedule(row: CardRow, now: Date, rating: Grade): Scheduled {
 }
 
 /** 4개 버튼에 표시할 "다음 복습" 미리보기 */
-export function previewIntervals(row: CardRow, now: Date): Record<1 | 2 | 3 | 4, string> {
+export function previewIntervals(
+  row: CardRow,
+  now: Date,
+  params?: number[] | null
+): Record<1 | 2 | 3 | 4, string> {
   const out = {} as Record<1 | 2 | 3 | 4, string>;
+  const scheduler = getScheduler(params);
   for (const r of [1, 2, 3, 4] as const) {
     const next = scheduler.next(rowToCard(row), now, r as Grade);
     out[r] = formatSpan(next.card.due.getTime() - now.getTime());

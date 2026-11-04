@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import type { Env, Stats, User } from '../types';
 import { Layout } from '../components/layout';
 import { getStats, listDecks } from '../db/queries';
+import { getTodayPlan, type TodayPlan } from '../db/plan';
+import { planReasonText } from '../lib/plan-text';
 
 const home = new Hono<Env>();
 
@@ -55,13 +57,21 @@ home.get('/', async (c) => {
     );
   }
 
-  const [stats, decks] = await Promise.all([
+  const now = new Date();
+  const [stats, decks, todayPlan] = await Promise.all([
     getStats(c.env.DB, user.id),
     listDecks(c.env.DB, user.id),
+    getTodayPlan(c.env.DB, user, now, false),
   ]);
 
   return c.html(
-    <Dashboard user={user} name={user.display_name ?? user.email} stats={stats} decks={decks} />
+    <Dashboard
+      user={user}
+      name={user.display_name ?? user.email}
+      stats={stats}
+      plan={todayPlan.plan}
+      decks={decks}
+    />
   );
 });
 
@@ -69,29 +79,51 @@ function Dashboard(props: {
   user: User;
   name: string;
   stats: Stats;
+  plan: TodayPlan;
   decks: { id: string; name: string; word_count: number }[];
 }) {
+  const remainingDue = Math.max(0, props.plan.dueCount - props.plan.reviewTarget);
+  const reason = planReasonText(props.plan);
+
   return (
     <Layout title="오늘" user={props.user}>
       <p class="text-sm text-muted">{props.name}</p>
 
       <section class="mt-6 border border-line border-b-2 border-b-line bg-surface px-6 py-8">
-        <p class="text-xs text-muted">오늘 볼 카드</p>
+        <p class="text-xs text-muted">오늘의 학습</p>
         <p class="mt-2 font-word text-5xl tracking-tight">
-          {props.stats.due}
+          {props.plan.remaining}
           <span class="ml-1 text-lg text-muted">장</span>
         </p>
 
-        {props.stats.due > 0 ? (
+        <p class="mt-2 text-sm text-muted">
+          복습 {props.plan.reviewTarget} · 승급 {props.plan.promotedTarget} · 신규{' '}
+          {props.plan.effectiveNew}
+          {props.plan.estimatedMinutes > 0 ? ` · 예상 ${props.plan.estimatedMinutes}분` : ''}
+        </p>
+
+        {props.plan.completed ? (
+          <p class="mt-3 text-sm text-accent">오늘 계획을 완료했습니다.</p>
+        ) : null}
+
+        {reason ? <p class="mt-2 text-xs leading-5 text-muted">{reason}</p> : null}
+
+        {props.plan.remaining > 0 ? (
           <a
             href="/review"
             class="mt-6 inline-block rounded bg-accent px-6 py-3 text-sm font-medium text-white hover:opacity-90"
           >
             학습 시작
           </a>
-        ) : (
+        ) : !props.plan.completed ? (
           <p class="mt-6 text-sm text-muted">오늘 몫은 다 했습니다.</p>
-        )}
+        ) : null}
+
+        {remainingDue > 0 ? (
+          <p class="mt-3 text-xs leading-5 text-muted">
+            복습 상한 때문에 남은 {remainingDue}장은 내일로 넘깁니다.
+          </p>
+        ) : null}
       </section>
 
       <dl class="mt-8 grid grid-cols-3 gap-px border border-line bg-line">
@@ -100,12 +132,20 @@ function Dashboard(props: {
         <Stat label="외운 단어" value={props.stats.learned} />
       </dl>
 
+      <a
+        href="/hard?tab=weak"
+        class="mt-4 flex items-baseline justify-between border border-line bg-surface px-4 py-3 text-sm hover:border-accent"
+      >
+        <span>취약 단어</span>
+        <span class="text-muted">오답 분석 · 취약 연습</span>
+      </a>
+
       {props.stats.hard > 0 ? (
         <a
-          href="/hard"
+          href="/hard?tab=leech"
           class="mt-4 flex items-baseline justify-between border border-line bg-surface px-4 py-3 text-sm hover:border-accent"
         >
-          <span>어려운 단어</span>
+          <span>격리된 단어</span>
           <span class="text-muted">{props.stats.hard}개 · 연상법 적기</span>
         </a>
       ) : null}

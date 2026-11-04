@@ -24,14 +24,18 @@
 | POST | `/seeds/:slug` | 필요 | 302 | 기본 콘텐츠 임포트 (`basic-1000`, `function-100`) |
 | GET | `/decks/:id/export` | 필요 | 파일 | CSV 다운로드 (⬜ 예정) |
 | GET | `/review` | 필요 | 전체 | 오늘의 큐, 첫 카드 표시 |
+| GET | `/review?mode=weak` | 필요 | 전체 | 기한이 도래한 취약 단어만 연습 |
 | GET | `/review/:cardId` | 필요 | 조각 | 앞면 카드 |
 | POST | `/review/next` | 필요 | 조각 | 결과 확인 후 다음 카드 |
 | POST | `/review/:cardId/hide` | 필요 | 조각 | 신규 카드 소개 → 뜻 가리기 |
 | POST | `/review/:cardId/reveal` | 필요 | 조각 | 뒷면(뜻/예문) 펼침 |
 | POST | `/review/:cardId/answer` | 필요 | 조각 | 한→영 / 빈칸 입력 채점 → 결과 |
 | GET | `/stats` | 필요 | 전체 | 학습 통계 |
-| GET | `/settings` | 필요 | 전체 | 학습 목표 설정 |
+| GET | `/settings` | 필요 | 전체 | 학습 목표, 듣기, FSRS 설정 |
 | POST | `/settings` | 필요 | 302 | 설정 저장 |
+| GET | `/settings/fsrs/export` | 필요 | JSON | FSRS 최적화용 리뷰 로그 |
+| POST | `/settings/fsrs` | 필요 | 302 | 21개 FSRS 가중치 적용 |
+| POST | `/settings/fsrs/reset` | 필요 | 302 | FSRS 파라미터 초기화 |
 | GET | `/decks/:id/export` | 필요 | 파일 | 단어장 CSV 다운로드 |
 | GET | `/terms` | — | 전체 | 이용약관 |
 | GET | `/privacy` | — | 전체 | 개인정보처리방침 |
@@ -39,7 +43,7 @@
 | GET | `/quiz/session` | 필요 | 전체 | 현재 문제 |
 | POST | `/quiz/answer` | 필요 | 조각 | 채점 → 피드백 |
 | POST | `/quiz/next` | 필요 | 조각 | 다음 문제 또는 결과 |
-| GET | `/hard` | 필요 | 전체 | 어려운 단어 목록 |
+| GET | `/hard?tab=weak\|observing\|leech` | 필요 | 전체 | 취약·관찰 중·격리 단어 목록 |
 | POST | `/hard/:cardId/note` | 필요 | 302 | 연상법 저장 |
 | POST | `/hard/:cardId/resume` | 필요 | 302 | 학습 큐로 복귀 |
 | POST | `/review/:cardId` | 필요 | 조각 | 평점(`rating`) 또는 입력 답안(`answer`) 처리 → 다음 카드 |
@@ -98,7 +102,7 @@ POST /review/:id  (rating=3)
     {[1,2,3,4].map(r => (
       <button
         hx-post={`/review/${card.id}`}
-        hx-vals={JSON.stringify({ rating: r })}
+        hx-vals={JSON.stringify({ rating: r, response_ms: responseMs, review_key: reviewKey, source })}
         hx-target="#review-root"
         hx-swap="innerHTML">
         <span>{LABEL[r]}</span>
@@ -108,6 +112,12 @@ POST /review/:id  (rating=3)
   </div>
 </section>
 ```
+
+> 뒷면에는 발음, 추가 예문, 함께 쓰는 표현, 유의어/반의어를 함께 표시한다.
+>
+> `response_ms`는 앞면 렌더 시 서버가 넣은 `shown_at`으로 계산한다.
+> `review_key`는 `${card.id}:${shown_at}`다. 같은 프롬프트의 재전송을 막는 멱등키다.
+> `source`는 일반 복습이면 `review`, 취약 연습이면 `weak`다.
 
 ### 다음 카드 응답 (평점 POST)
 
@@ -129,10 +139,12 @@ POST /review/:id  (rating=3)
 
 ```tsx
 <form
-  hx-post={`/review/${card.id}`}
+  hx-post={`/review/${card.id}/answer`}
   hx-target="#review-root"
   hx-swap="innerHTML"
   hx-disabled-elt="find button">
+  <input type="hidden" name="shown_at" value={shownAt} />
+  <input type="hidden" name="source" value={source} />
   <p class="text-2xl">어디에나 있는</p>
   <input name="answer" autocomplete="off" autocapitalize="off" spellcheck="false"
          class="..." autofocus />
@@ -140,6 +152,7 @@ POST /review/:id  (rating=3)
 </form>
 ```
 
+- `shown_at`은 프롬프트 렌더 시 서버 시각. `response_ms` 계산에 쓴다.
 - `autocapitalize="off"`, `spellcheck="false"` 필수. 모바일에서 자동 대문자/맞춤법이 채점을 망칩니다.
 - Enter로 제출 (`<form>`이므로 기본 동작).
 - 채점 결과는 [06-learning-design.md](06-learning-design.md) 5절 규칙을 따릅니다.
@@ -155,6 +168,15 @@ She ate ____ apple.
 
 - 예문은 `blankOut(example, term)` 으로 만듭니다. 기본형이 매칭되지 않으면 빈칸 카드를 만들지 않습니다.
 - 뜻을 기본 노출하지 않습니다. 문맥만으로 떠올리는 것이 cloze의 목적이고, 막힐 때만 힌트를 엽니다.
+
+### 듣기 카드 (`listening`)
+
+- 단어를 화면에 보여주지 않고 **TTS 재생 버튼**만 표시합니다.
+- 입력·채점은 `recall`과 같습니다. `question_type='listening'`으로 기록합니다.
+- 재생 횟수 제한은 없습니다. “다시 듣기”는 같은 버튼을 다시 누르면 됩니다.
+- “들리지 않아요”는 빈 답안으로 제출해 `Again` 처리하고 정답을 공개합니다.
+- TTS가 없는 기기에서는 안내 문구를 보여주고 “들리지 않아요”로 넘어가게 합니다.
+- 발음 설정(미국식/영국식, 속도)은 `body`의 `data-voice-locale` / `data-voice-rate`로 전달합니다.
 
 오답 응답:
 
@@ -172,6 +194,26 @@ She ate ____ apple.
 
 > 오답일 때는 사용자가 "확인"을 누르게 합니다. 자동으로 넘어가면
 > 정답을 읽을 시간이 없어 학습이 일어나지 않습니다.
+
+## 취약 단어 `/hard`
+
+- 탭: `weak`(기본) / `observing` / `leech`
+- 취약 탭: `weak` + `attention` 단어, 최근 정답률, 취약 방향, 마지막 복습
+- 90일 이상 지난 `stale` 단어는 취약 랭킹에서 제외하고 “재확인 필요”에 접어서 표시
+- 관찰 중 탭: 리뷰 5회 미만이라 판정을 보류한 단어
+- 격리 탭: `suspended=1` 단어. 연상법 저장/복귀 폼은 기존과 동일
+- “취약 단어 연습” 버튼은 `/review?mode=weak`로 이동한다.
+
+`/review?mode=weak`는 **기한이 도래한 취약 단어만** 보여준다. 기한 전 카드를 당기지 않는다.
+리뷰는 기존 FSRS 절차를 그대로 쓰고, `source='weak'`로 기록한다.
+
+## FSRS 개인화 `/settings`
+
+- 리뷰 건수와 1,000건 목표를 표시한다.
+- `리뷰 로그 내보내기 (JSON)`은 FSRS 최적화 입력을 내려받는다.
+- 21개 가중치 배열을 textarea에 붙여넣어 적용한다.
+- 적용 중이면 `기본값으로 초기화` 버튼을 보여준다.
+- 잘못된 JSON/길이는 `?fsrs=invalid`로 돌려보내고 오류를 표시한다.
 
 ## HTMX 속성 정리
 
@@ -220,9 +262,10 @@ document.addEventListener('keydown', (e) => {
 │  Wordy             🔥 12일   │
 ├─────────────────────────────┤
 │                             │
-│      오늘 남은 카드          │
-│          23                 │
-│   복습 18 · 신규 5           │
+│      오늘의 학습            │
+│          23장               │
+│ 복습 18 · 승급 2 · 신규 3    │
+│      예상 12분              │
 │                             │
 │   [  학습 시작하기  ]        │
 │                             │
@@ -233,8 +276,9 @@ document.addEventListener('keydown', (e) => {
 
 ### 단어장 `/decks/:id`
 
-- 상단: 단어장 이름, 단어 수, `CSV 가져오기` / `내보내기`
-- 본문: 단어 리스트 (term / meaning / 다음 복습일 / 삭제)
+- 상단: 단어장 이름, 단어 수, `내보내기` / `전체`(`?full=1`)
+- 본문: 단어 리스트 (term / 발음 / meaning / 레벨·카테고리 / 다음 복습일 / 삭제)
+- 각 단어의 추가 예문·콜로케이션·유의어·반의어는 `details`로 접어서 표시
 - 하단 고정: 빠른 추가 입력 (term + meaning 두 칸, Enter로 연속 추가)
 
 > **연속 추가 UX가 중요합니다.** 단어 입력은 이 앱에서 가장 귀찮은 작업입니다.

@@ -4,15 +4,27 @@ const CLIENT_JS = `
 document.addEventListener('click', function (e) {
   var speak = e.target.closest('[data-speak]');
   if (speak) {
+    if (!('speechSynthesis' in window)) return;
     var word = speak.getAttribute('data-speak');
     var u = new SpeechSynthesisUtterance(word);
-    u.lang = 'en-US';
-    u.rate = 0.9;
+    var body = document.body;
+    u.lang = body.getAttribute('data-voice-locale') || 'en-US';
+    var rate = parseFloat(body.getAttribute('data-voice-rate') || '0.9');
+    u.rate = isFinite(rate) ? rate : 0.9;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return;
   }
 });
+
+function markTtsSupport() {
+  if ('speechSynthesis' in window) return;
+  document.querySelectorAll('[data-tts-note]').forEach(function (el) {
+    el.hidden = false;
+  });
+}
+markTtsSupport();
+document.addEventListener('htmx:afterSwap', markTtsSupport);
 
 document.addEventListener('keydown', function (e) {
   var root = document.getElementById('review-root');
@@ -116,7 +128,11 @@ export function Layout(props: { title: string; user: User | null; children?: any
         <link rel="stylesheet" href="/styles.css" />
         <script src="/htmx.min.js" defer></script>
       </head>
-      <body class="min-h-dvh bg-paper font-sans text-ink antialiased">
+      <body
+        class="min-h-dvh bg-paper font-sans text-ink antialiased"
+        data-voice-locale={props.user?.voice_locale ?? 'en-US'}
+        data-voice-rate={String(props.user?.voice_rate ?? 0.9)}
+      >
         <header class="border-b border-line">
           <div class="mx-auto flex max-w-2xl items-baseline justify-between px-5 py-4">
             <a href="/" class="text-[15px] font-semibold tracking-tight">

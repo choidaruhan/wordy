@@ -1,5 +1,7 @@
 import type { Deck, Stats, WordRow } from '../types';
 import type { SeedWord } from '../lib/csv';
+import { serializeJsonList } from '../lib/word-meta';
+import { learnedCount } from './stats';
 
 function chunked<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -50,6 +52,17 @@ export async function listWords(db: D1Database, deckId: string): Promise<WordRow
   const { results } = await db
     .prepare(
       `SELECT w.id, w.term, w.meaning, w.pos, w.example, w.example_ko,
+              w.category, w.level, w.pronunciation, w.audio_url,
+              w.collocations, w.synonyms, w.antonyms,
+              (
+                SELECT GROUP_CONCAT(line, char(10))
+                  FROM (
+                    SELECT e.sentence || char(9) || COALESCE(e.translation, '') AS line
+                      FROM word_examples e
+                     WHERE e.word_id = w.id
+                     ORDER BY e.created_at
+                  )
+              ) AS extra_examples_raw,
               c.due_at, c.state
          FROM words w
          LEFT JOIN cards c ON c.word_id = w.id AND c.card_type = 'recognition'
@@ -61,19 +74,39 @@ export async function listWords(db: D1Database, deckId: string): Promise<WordRow
   return results;
 }
 
+export type WordInput = {
+  term: string;
+  meaning: string;
+  pos?: string;
+  example?: string;
+  exampleKo?: string;
+  category?: string;
+  level?: string;
+  pronunciation?: string;
+  audioUrl?: string;
+  collocations?: string[];
+  synonyms?: string[];
+  antonyms?: string[];
+  extraExamples?: { sentence: string; translation?: string | null }[];
+};
+
 export async function addWord(
   db: D1Database,
   userId: string,
   deckId: string,
-  input: { term: string; meaning: string; pos?: string; example?: string; exampleKo?: string }
+  input: WordInput
 ): Promise<string> {
   const wordId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.batch([
+  const stmts: D1PreparedStatement[] = [
     db
       .prepare(
-        'INSERT INTO words (id, deck_id, term, meaning, pos, example, example_ko, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        `INSERT INTO words (
+           id, deck_id, term, meaning, pos, example, example_ko,
+           category, level, pronunciation, audio_url,
+           collocations, synonyms, antonyms, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         wordId,
@@ -83,6 +116,13 @@ export async function addWord(
         input.pos || null,
         input.example || null,
         input.exampleKo || null,
+        input.category || null,
+        input.level || null,
+        input.pronunciation || null,
+        input.audioUrl || null,
+        serializeJsonList(input.collocations),
+        serializeJsonList(input.synonyms),
+        serializeJsonList(input.antonyms),
         now
       ),
     db
@@ -91,7 +131,28 @@ export async function addWord(
          VALUES (?, ?, ?, 'recognition', ?, 'new', ?)`
       )
       .bind(crypto.randomUUID(), wordId, userId, now, now),
-  ]);
+  ];
+
+  for (const example of input.extraExamples ?? []) {
+    const sentence = example.sentence.trim();
+    if (!sentence) continue;
+    stmts.push(
+      db
+        .prepare(
+          `INSERT INTO word_examples (id, word_id, sentence, translation, is_primary, created_at)
+           VALUES (?, ?, ?, ?, 0, ?)`
+        )
+        .bind(
+          crypto.randomUUID(),
+          wordId,
+          sentence,
+          example.translation?.trim() || null,
+          now
+        )
+    );
+  }
+
+  await db.batch(stmts);
 
   return wordId;
 }
@@ -108,9 +169,7 @@ export async function deleteWord(db: D1Database, userId: string, wordId: string)
 }
 
 export async function getStats(db: D1Database, userId: string): Promise<Stats> {
-  const now = new Date().toISOString();
-
-  const [total, decks, due, learned, hard] = await Promise.all([
+  const [total, decks, learned, hard] = await Promise.all([
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM words w JOIN decks d ON d.id = w.deck_id WHERE d.user_id = ?`
@@ -118,17 +177,7 @@ export async function getStats(db: D1Database, userId: string): Promise<Stats> {
       .bind(userId)
       .first<{ n: number }>(),
     db.prepare('SELECT COUNT(*) AS n FROM decks WHERE user_id = ?').bind(userId).first<{ n: number }>(),
-    db
-      .prepare('SELECT COUNT(*) AS n FROM cards WHERE user_id = ? AND suspended = 0 AND due_at <= ?')
-      .bind(userId, now)
-      .first<{ n: number }>(),
-    db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM cards
-          WHERE user_id = ? AND state = 'review' AND scheduled_days >= 21`
-      )
-      .bind(userId)
-      .first<{ n: number }>(),
+    learnedCount(db, userId),
     db
       .prepare('SELECT COUNT(*) AS n FROM cards WHERE user_id = ? AND suspended = 1')
       .bind(userId)
@@ -138,8 +187,7 @@ export async function getStats(db: D1Database, userId: string): Promise<Stats> {
   return {
     total: total?.n ?? 0,
     decks: decks?.n ?? 0,
-    due: due?.n ?? 0,
-    learned: learned?.n ?? 0,
+    learned,
     hard: hard?.n ?? 0,
   };
 }
@@ -160,6 +208,7 @@ export async function importSeed(
 
   const wordStmts: D1PreparedStatement[] = [];
   const cardStmts: D1PreparedStatement[] = [];
+  const exampleStmts: D1PreparedStatement[] = [];
   const seen = new Set<string>();
 
   for (const w of words) {
@@ -168,13 +217,35 @@ export async function importSeed(
     seen.add(key);
 
     const wordId = crypto.randomUUID();
+
     wordStmts.push(
       db
         .prepare(
-          'INSERT INTO words (id, deck_id, term, meaning, pos, example, example_ko, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          `INSERT INTO words (
+             id, deck_id, term, meaning, pos, example, example_ko,
+             category, level, pronunciation, audio_url,
+             collocations, synonyms, antonyms, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .bind(wordId, deckId, w.term, w.meaning, w.pos || null, w.example || null, w.example_ko || null, now)
+        .bind(
+          wordId,
+          deckId,
+          w.term,
+          w.meaning,
+          w.pos || null,
+          w.example || null,
+          w.example_ko || null,
+          w.category || null,
+          w.level || null,
+          w.pronunciation || null,
+          w.audio_url || null,
+          serializeJsonList(w.collocations),
+          serializeJsonList(w.synonyms),
+          serializeJsonList(w.antonyms),
+          now
+        )
     );
+
     cardStmts.push(
       db
         .prepare(
@@ -183,9 +254,28 @@ export async function importSeed(
         )
         .bind(crypto.randomUUID(), wordId, userId, now, now)
     );
+
+    for (const example of w.extraExamples) {
+      const sentence = example.sentence.trim();
+      if (!sentence) continue;
+      exampleStmts.push(
+        db
+          .prepare(
+            `INSERT INTO word_examples (id, word_id, sentence, translation, is_primary, created_at)
+             VALUES (?, ?, ?, ?, 0, ?)`
+          )
+          .bind(
+            crypto.randomUUID(),
+            wordId,
+            sentence,
+            example.translation.trim() || null,
+            now
+          )
+      );
+    }
   }
 
-  for (const chunk of chunked([...wordStmts, ...cardStmts], 50)) {
+  for (const chunk of chunked([...wordStmts, ...cardStmts, ...exampleStmts], 50)) {
     await db.batch(chunk);
   }
 

@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import type { Env, WordRow } from '../types';
 import { Layout } from '../components/layout';
 import { formatDue } from '../lib/time';
-import { parseWordCsv } from '../lib/csv';
+import { buildDeckCsv, parseWordCsv } from '../lib/csv';
+import { parseExtraExamples, parseJsonList } from '../lib/word-meta';
 import {
   addWord,
   createDeck,
@@ -137,6 +138,9 @@ decks.get('/decks/:id', async (c) => {  const user = c.get('user');
           <a href={`/decks/${deck.id}/export`} class="text-accent hover:underline">
             내보내기
           </a>
+          <a href={`/decks/${deck.id}/export?full=1`} class="text-accent hover:underline">
+            전체
+          </a>
         </div>
       </div>
 
@@ -193,14 +197,7 @@ decks.get('/decks/:id/export', async (c) => {
   if (!deck) return c.notFound();
 
   const words = await listWords(c.env.DB, deck.id);
-
-  const lines = ['term,meaning,pos,example,example_ko'];
-  for (const w of words) {
-    lines.push([w.term, w.meaning, w.pos, w.example, w.example_ko].map(csvField).join(','));
-  }
-
-  // 엑셀에서 한글이 깨지지 않도록 BOM을 붙인다. 우리 임포터는 BOM을 무시한다.
-  const body = '\uFEFF' + lines.join('\n') + '\n';
+  const body = buildDeckCsv(words, c.req.query('full') === '1');
   const asciiName = deck.name
     .replace(/[^A-Za-z0-9\-. ]+/g, '')
     .trim()
@@ -216,11 +213,6 @@ decks.get('/decks/:id/export', async (c) => {
 
   return c.body(body);
 });
-
-function csvField(value: string | null): string {
-  const text = (value ?? '').replace(/\r?\n/g, ' ');
-  return `"${text.replace(/"/g, '""')}"`;
-}
 
 decks.post('/decks/:id/words', async (c) => {  const user = c.get('user');
   if (!user) return c.text('로그인이 필요합니다.', 401);
@@ -247,6 +239,14 @@ decks.post('/decks/:id/words', async (c) => {  const user = c.get('user');
       pos: null,
       example: example || null,
       example_ko: null,
+      category: null,
+      level: null,
+      pronunciation: null,
+      audio_url: null,
+      collocations: null,
+      synonyms: null,
+      antonyms: null,
+      extra_examples_raw: null,
       due_at: new Date().toISOString(),
       state: 'new',
     };
@@ -297,22 +297,63 @@ decks.post('/seeds/:slug', async (c) => {
 });
 
 function WordRowView(props: { w: WordRow }) {
+  const w = props.w;
+  const collocations = parseJsonList(w.collocations);
+  const synonyms = parseJsonList(w.synonyms);
+  const antonyms = parseJsonList(w.antonyms);
+  const extras = parseExtraExamples(w.extra_examples_raw);
+  const hasDetails = extras.length > 0 || collocations.length > 0 || synonyms.length > 0 || antonyms.length > 0;
+
   return (
-    <li id={`word-${props.w.id}`} class="flex items-baseline justify-between gap-4 border-b border-line py-3">
+    <li id={`word-${w.id}`} class="flex items-baseline justify-between gap-4 border-b border-line py-3">
       <div class="min-w-0">
         <div class="flex flex-wrap items-baseline gap-x-2">
-          <span class="font-word text-[17px]">{props.w.term}</span>
-          <span class="text-sm text-muted">{props.w.meaning}</span>
+          <span class="font-word text-[17px]">{w.term}</span>
+          {w.pronunciation ? (
+            <span class="text-xs text-muted">{w.pronunciation}</span>
+          ) : null}
+          <span class="text-sm text-muted">{w.meaning}</span>
+          {w.level ? (
+            <span class="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted">
+              {w.level}
+            </span>
+          ) : null}
+          {w.category ? (
+            <span class="text-[10px] text-muted">{w.category}</span>
+          ) : null}
         </div>
-        {props.w.example ? (
-          <p class="mt-1 text-sm leading-5 text-muted">{props.w.example}</p>
+        {w.example ? (
+          <p class="mt-1 font-word text-sm leading-5 text-muted">{w.example}</p>
+        ) : null}
+        {w.example_ko ? (
+          <p class="text-xs leading-5 text-muted">{w.example_ko}</p>
+        ) : null}
+        {hasDetails ? (
+          <details class="mt-1">
+            <summary class="cursor-pointer text-xs text-muted hover:text-accent">
+              예문·표현 더 보기
+            </summary>
+            <div class="mt-1 space-y-1 text-sm leading-5 text-muted">
+              {extras.map((example) => (
+                <p>
+                  <span class="font-word">{example.sentence}</span>
+                  {example.translation ? <span> — {example.translation}</span> : null}
+                </p>
+              ))}
+              {collocations.length > 0 ? (
+                <p>함께 쓰는 표현: {collocations.join(' · ')}</p>
+              ) : null}
+              {synonyms.length > 0 ? <p>유의어: {synonyms.join(', ')}</p> : null}
+              {antonyms.length > 0 ? <p>반의어: {antonyms.join(', ')}</p> : null}
+            </div>
+          </details>
         ) : null}
       </div>
       <div class="flex shrink-0 items-baseline gap-3 text-xs text-muted">
-        <span>{formatDue(props.w.due_at)}</span>
+        <span>{formatDue(w.due_at)}</span>
         <button
-          hx-delete={`/words/${props.w.id}`}
-          hx-target={`#word-${props.w.id}`}
+          hx-delete={`/words/${w.id}`}
+          hx-target={`#word-${w.id}`}
           hx-swap="outerHTML"
           hx-confirm="이 단어를 삭제할까요?"
           class="hover:text-danger"

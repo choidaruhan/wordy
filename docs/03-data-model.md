@@ -14,6 +14,7 @@ DB: **Cloudflare D1 (SQLite)**
 ```
 users ─1:N─ decks ─1:N─ words ─1:N─ cards ─1:N─ reviews
    └───────────── sessions
+   └───────────── daily_plans
 ```
 
 **단어 1개 = 카드 여러 장.** 카드 유형(`recognition` / `recall` / `cloze` / `listening`)마다
@@ -125,6 +126,91 @@ CREATE UNIQUE INDEX ux_reviews_card_instant ON reviews(card_id, reviewed_at);
 ```
 
 ```sql
+-- migrations/0004_review_instrumentation.sql (M6.1)
+-- 기존 리뷰는 보존하고, 아래 컬럼만 추가한 뒤 백필한다.
+
+ALTER TABLE reviews ADD COLUMN question_type TEXT;
+ALTER TABLE reviews ADD COLUMN answer TEXT;
+ALTER TABLE reviews ADD COLUMN is_correct INTEGER;
+ALTER TABLE reviews ADD COLUMN grading_source TEXT;
+ALTER TABLE reviews ADD COLUMN response_ms INTEGER;
+ALTER TABLE reviews ADD COLUMN attempt_seq INTEGER;
+ALTER TABLE reviews ADD COLUMN source TEXT NOT NULL DEFAULT 'review';
+ALTER TABLE reviews ADD COLUMN next_state TEXT;
+ALTER TABLE reviews ADD COLUMN next_due_at TEXT;
+
+CREATE INDEX idx_reviews_user_card ON reviews(user_id, card_id, reviewed_at);
+CREATE INDEX idx_reviews_user_type_date ON reviews(user_id, question_type, local_date);
+CREATE UNIQUE INDEX ux_reviews_card_date_attempt ON reviews(card_id, local_date, attempt_seq);
+```
+
+```sql
+-- migrations/0005_review_idempotency.sql (M6.1)
+-- 같은 프롬프트에서 나온 재전송을 한 번만 기록한다.
+ALTER TABLE reviews ADD COLUMN review_key TEXT;  -- 'card_id:shown_at'
+CREATE UNIQUE INDEX ux_reviews_user_review_key ON reviews(user_id, review_key);
+```
+
+```sql
+-- migrations/0006_daily_plans.sql (M6.3)
+CREATE TABLE daily_plans (
+  user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  local_date        TEXT NOT NULL,
+  base_new          INTEGER NOT NULL,
+  effective_new     INTEGER NOT NULL,
+  review_target     INTEGER NOT NULL,
+  promoted_target   INTEGER NOT NULL,
+  due_count         INTEGER NOT NULL,
+  estimated_minutes INTEGER NOT NULL DEFAULT 0,
+  reason            TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  completed_at      TEXT,
+  PRIMARY KEY (user_id, local_date)
+);
+CREATE INDEX idx_daily_plans_completed ON daily_plans(user_id, completed_at);
+
+ALTER TABLE users ADD COLUMN new_card_mode TEXT NOT NULL DEFAULT 'auto';
+```
+
+```sql
+-- migrations/0007_words_metadata.sql (M6.4)
+ALTER TABLE words ADD COLUMN category TEXT;
+ALTER TABLE words ADD COLUMN level TEXT;           -- A1~C2
+ALTER TABLE words ADD COLUMN pronunciation TEXT;   -- IPA
+ALTER TABLE words ADD COLUMN audio_url TEXT;
+ALTER TABLE words ADD COLUMN collocations TEXT;    -- JSON array
+ALTER TABLE words ADD COLUMN synonyms TEXT;        -- JSON array
+ALTER TABLE words ADD COLUMN antonyms TEXT;        -- JSON array
+
+CREATE TABLE word_examples (
+  id          TEXT PRIMARY KEY,
+  word_id     TEXT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  sentence    TEXT NOT NULL,
+  translation TEXT,
+  is_primary  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX idx_word_examples_word ON word_examples(word_id);
+CREATE INDEX idx_quiz_questions_word ON quiz_questions(word_id);
+```
+
+```sql
+-- migrations/0008_user_preferences.sql (M6.5)
+ALTER TABLE users ADD COLUMN listening_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN voice_locale TEXT NOT NULL DEFAULT 'en-US';
+ALTER TABLE users ADD COLUMN voice_rate REAL NOT NULL DEFAULT 0.9;
+```
+
+```sql
+-- migrations/0009_fsrs_params.sql (M6.6)
+ALTER TABLE users ADD COLUMN fsrs_params TEXT;           -- JSON number[21]
+ALTER TABLE users ADD COLUMN fsrs_params_updated_at TEXT;
+```
+
+> 컬럼 의미와 백필 규칙은 [07-learning-engine.md](07-learning-engine.md) 9~11절이 기준입니다.
+> `is_correct`는 `rating >= 2`다. FSRS에서 Again만 실패다.
+
+```sql
 -- migrations/0003_quiz.sql
 -- 객관식 테스트. 학습 일정(FSRS)과 완전히 분리된 기록이다.
 
@@ -156,10 +242,12 @@ CREATE TABLE quiz_questions (
 ## "오늘의 큐" 조회
 
 ```sql
--- ① 오늘 이미 한 신규 카드 수 (일일 상한 계산용)
+-- ① 오늘 이미 한 신규 소개 수 (daily_new 상한 계산용)
+-- 승급 카드(recall/cloze)의 첫 리뷰는 여기에 포함하지 않는다.
 SELECT COUNT(*) AS n
 FROM reviews
-WHERE user_id = ?1 AND local_date = ?2 AND reps_before = 0;
+WHERE user_id = ?1 AND local_date = ?2
+  AND reps_before = 0 AND question_type = 'recognition';
 
 -- ② 복습 대기 카드
 SELECT c.*, w.term, w.meaning, w.pos, w.example
@@ -183,28 +271,48 @@ ORDER BY c.created_at ASC
 LIMIT ?4;
 ```
 
-**순서 규칙**: 복습 카드(기한 지난 것) → 신규 카드. 신규를 먼저 보여주면 사용자가 어려운 복습을 회피합니다.
+**순서 규칙**: 복습 카드(기한 지난 것) → 승급 카드(한→영/빈칸) → 신규 카드.
+신규를 먼저 보여주면 사용자가 어려운 복습을 회피합니다.
+
+**쿼터**: `daily_review`는 복습과 승급 첫 리뷰에 함께 적용하고, `daily_new`는 처음 보는
+`recognition` 카드에만 적용합니다. 자세한 계산은 [07-learning-engine.md](07-learning-engine.md) 5~6절.
 
 ## 리뷰 저장 (트랜잭션)
 
 리뷰 1건 = `cards` UPDATE + `reviews` INSERT. **반드시 함께 성공해야 합니다.**
 
 ```ts
-await c.env.DB.batch([
+const [cardResult, reviewResult] = await c.env.DB.batch([
   c.env.DB.prepare(
-    `UPDATE cards SET due_at=?, state=?, stability=?, difficulty=?, reps=?, lapses=?,
-            last_reviewed_at=?, scheduled_days=?
-     WHERE id=? AND user_id=?`
-  ).bind(...),
+    `UPDATE cards
+        SET due_at=?, state=?, stability=?, difficulty=?, scheduled_days=?,
+            learning_steps=?, reps=?, lapses=?, last_reviewed_at=?
+      WHERE id=? AND user_id=? AND reps=?`
+  ).bind(..., row.id, userId, row.reps),
   c.env.DB.prepare(
-    `INSERT INTO reviews (id, card_id, user_id, rating, local_date, reviewed_at,
-                          elapsed_days, scheduled_days, reps_before, prev_state)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO reviews (
+       id, card_id, user_id, rating, local_date, reviewed_at,
+       elapsed_days, scheduled_days, reps_before, prev_state,
+       question_type, answer, is_correct, grading_source, response_ms, review_key,
+       attempt_seq, source, next_state, next_due_at
+     )
+     SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            (SELECT COUNT(*)+1 FROM reviews WHERE card_id=? AND local_date=?),
+            ?,?,?
+      WHERE EXISTS (
+        SELECT 1 FROM cards WHERE id=? AND user_id=? AND last_reviewed_at=?
+      )`
   ).bind(...),
 ]);
+
+if ((cardResult.meta.changes ?? 0) === 0) return null; // 이미 처리됨
 ```
 
 `DB.batch()`는 D1에서 하나의 트랜잭션으로 실행됩니다.
+`WHERE reps=?` 낙관적 락, `last_reviewed_at` 토큰, `review_key` 유니크 인덱스로 중복 저장을 막습니다.
+유니크 위반이 나면 batch 전체가 롤백되므로 카드 상태만 바뀌는 사고가 없습니다.
+`maybeUnlock*`는 배치 밖에서 best-effort로 실행하고, `/review` 로드 시
+`ensureUnlocks()`로 누락분을 재시도합니다.
 
 ## 연속 학습일 (streak)
 
@@ -230,9 +338,9 @@ WHERE user_id = ?1 AND local_date >= ?2
 GROUP BY local_date
 ORDER BY local_date;
 
--- 정답률 (Good/Easy 비율)
+-- 정답률 (Again만 오답. Hard/Good/Easy는 회상 성공)
 SELECT
-  SUM(CASE WHEN rating >= 3 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS accuracy
+  SUM(CASE WHEN rating >= 2 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS accuracy
 FROM reviews
 WHERE user_id = ?1 AND local_date >= ?2;
 ```
@@ -250,11 +358,22 @@ WHERE user_id = ?1 AND local_date >= ?2;
 | `pos` | | 품사: `n` `v` `adj` `adv` `prep` `conj` `pron` `det` `num` `modal` `phr` |
 | `example` | | 영어 예문. `term` 이 포함되어야 cloze 카드로 승급 가능 |
 | `example_ko` | | 예문 해석 |
+| `category` | | 카테고리 (예: 일상생활, 감정과 심리) |
+| `level` | | CEFR `A1` `A2` `B1` `B2` `C1` `C2` |
+| `pronunciation` | | IPA 발음 기호 |
+| `audio_url` | | 추후 실제 음성 URL |
+| `collocations` | | 함께 쓰는 표현. `\|` 로 구분 |
+| `synonyms` | | 유의어. `\|` 로 구분 |
+| `antonyms` | | 반의어. `\|` 로 구분 |
+| `example_2` | | 추가 예문 1. `term` 포함 권장 |
+| `example_2_ko` | | 추가 예문 1 해석 |
+| `example_3` | | 추가 예문 2 |
+| `example_3_ko` | | 추가 예문 2 해석 |
 
 ```csv
-term,meaning,pos,example,example_ko
-ubiquitous,어디에나 있는,adj,"Smartphones are ubiquitous these days.","요즘 스마트폰은 어디에나 있다."
-resilient,회복력 있는,adj,,
+term,meaning,pos,example,example_ko,category,level,pronunciation,collocations,synonyms,antonyms,example_2,example_2_ko,example_3,example_3_ko
+ubiquitous,어디에나 있는,adj,"Smartphones are ubiquitous these days.","요즘 스마트폰은 어디에나 있다.",일상생활,B2,/juːˈbɪkwɪtəs/,"ubiquitous technology|ubiquitous presence",omnipresent,rare,"Smartphones are ubiquitous.","스마트폰은 어디에나 있다.",,
+resilient,회복력 있는,adj,,,감정과 심리,B2,/rɪˈzɪliənt/,"resilient economy|resilient person",tough,fragile,,,,,
 ```
 
 ### 규칙
@@ -262,6 +381,8 @@ resilient,회복력 있는,adj,,
 - 인코딩: UTF-8 (BOM 허용, 파싱 시 제거)
 - 구분자: 쉼표. 따옴표 안의 쉼표·줄바꿈 허용 → **예문/해석은 항상 따옴표로 감쌀 것**
 - `meaning` 에는 쉼표를 쓰지 않습니다 (`;` 사용). 따옴표 없이 관리하기 위함
+- **앞 5컬럼은 필수, 그 뒤 선택 컬럼은 순서를 바꿔도 됩니다.** 기존 5컬럼 파일도 그대로 임포트됩니다.
+- `collocations` / `synonyms` / `antonyms` 는 셀 안에서 `|` 로 구분합니다.
 - `term` 중복 시: **건너뛰고 결과에 "중복 3건 제외" 표시** (덮어쓰지 않음)
 - 파일 크기 상한: 5MB (Workers 요청 본문 한도 고려)
 - **파일 순서 = 학습 순서**입니다. 별도 순위 컬럼을 두지 않습니다
@@ -276,7 +397,8 @@ node scripts/check-seed.mjs public/seeds/basic-1000.csv --expect 1000
 
 중복, 컬럼 수, 빈 필드, 품사 오타, 예문에 단어가 빠진 경우를 잡아냅니다.
 
-내보내기는 **같은 5컬럼**을 그대로 내보냅니다. 다시 임포트할 수 있어야 하기 때문입니다.
+내보내기는 기본적으로 **같은 5컬럼**을 그대로 내보냅니다. 다시 임포트할 수 있어야 하기 때문입니다.
+`?full=1` 을 붙이면 메타데이터·추가 예문까지 포함한 16컬럼으로 내보냅니다.
 학습 상태(`due_at`, `state`)는 진행도 백업용으로는 유용하지만, 그 컬럼이 있으면 재임포트가 깨집니다.
 (필요해지면 `?progress=1` 같은 별도 옵션으로 분리)
 

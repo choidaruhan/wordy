@@ -47,22 +47,31 @@
 | `recognition` | 단어 생성 시 | 항상 존재하는 기본 카드 |
 | `recall` | recognition이 `state='review'` **그리고** `scheduled_days >= 4` | 아직 기억이 불안정한데 철자까지 요구하면 좌절 |
 | `cloze` | `words.example` 존재 **그리고** recognition `stability >= 7` | 문맥 없이 빈칸은 불가능 |
-| `listening` | 수동 활성화 (v1.2) | TTS 품질 검증 후 |
+| `listening` | 사용자가 설정에서 켬 **그리고** recognition이 `state='review'` + `scheduled_days >= 14` | TTS 기반 듣기 학습 (M6.5) |
 
-승급 검사는 **평점을 저장한 직후, 같은 트랜잭션 안에서** 수행합니다.
+승급 검사는 **평점 저장이 끝난 뒤 best-effort로** 수행합니다.
+리뷰 저장과 승급을 같은 트랜잭션에 묶으면, 승급 실패가 학습 기록을 막을 수 있기 때문입니다.
 
 ```ts
-await db.batch([updateCard, insertReview]);
-await maybeUnlockCards(db, userId, card);  // 실패해도 학습은 계속되도록 뒤에
+const saved = await saveReview(...); // cards UPDATE + reviews INSERT (batch)
+if (saved) {
+  await maybeUnlockRecall(...);
+  await maybeUnlockCloze(...);
+}
+// GET /review
+await ensureUnlocks(db, userId); // 누락된 승급을 멱등적으로 재시도
 ```
 
-`INSERT ... ON CONFLICT(word_id, card_type) DO NOTHING` 으로 중복 생성을 방지합니다.
+`INSERT OR IGNORE`와 `ux_cards_word_type(word_id, card_type)`으로 중복 생성을 방지합니다.
+승급 누락은 `/review` 로드 시 복구되므로, 일시적 실패가 영구 누락이 되지 않습니다.
 
 > 승급하지 않으면 이 앱은 "영→한"만 물어보는 평범한 단어 앱이 됩니다.
 > 승급 규칙이 `recall`(한→영) 학습의 유일한 진입점입니다.
 
-**큐 우선순위**: 승급된 한→영 카드는 `state='new'` 이지만 `daily_new` 쿼터에 포함하지 않고
-먼저 꺼냅니다. 그렇지 않으면 새로 승급된 카드가 아직 안 본 단어 1,000개 뒤에 묻힙니다.
+**큐 우선순위**: 복습 → 승급 → 신규.
+승급된 한→영 카드는 `state='new'` 이지만 `daily_new` 쿼터에 포함하지 않습니다.
+그렇지 않으면 새로 승급된 카드가 아직 안 본 단어 1,000개 뒤에 묻힙니다.
+대신 승급 첫 리뷰는 `daily_review` 부담에 포함합니다. 생산 연습도 실제 학습량이기 때문입니다.
 
 **승급 제외**: `pos` 가 `det` / `pron` / `prep` / `conj` / `modal` 인 기능어는 `recall` 승급을 하지 않습니다.
 `"~안에" → in` 처럼 답이 하나로 정해지지 않아 한→영 채점이 성립하지 않기 때문입니다.
@@ -174,24 +183,41 @@ export function localDate(now: Date, tzOffsetMin: number): string {
 ```ts
 async function buildQueue(db: D1Database, userId: string, now: Date) {
   const today = localDate(now, tzOffset);
-  const newDoneToday = await countNewReviewsToday(db, userId, today);
-  const reviewDoneToday = await countReviewsToday(db, userId, today);
+  const newDoneToday = await countNewIntroToday(db, userId, today);
+  const doneToday = await countReviewsToday(db, userId, today);
+  const reviewDoneToday = doneToday - newDoneToday;
 
+  // daily_review는 복습 + 승급 첫 리뷰에 적용한다.
   const reviewQuota = Math.max(0, daily_review - reviewDoneToday);
+  // daily_new는 처음 보는 recognition 카드에만 적용한다.
   const newQuota = Math.max(0, daily_new - newDoneToday);
 
   const reviews = await dueReviews(db, userId, now.toISOString(), reviewQuota);
+  const usedByReviews = reviews.length;
+  const promoted = await promotedDue(
+    db,
+    userId,
+    now.toISOString(),
+    Math.max(0, reviewQuota - usedByReviews)
+  );
   const news = newQuota > 0 ? await newCards(db, userId, newQuota) : [];
 
-  return [...reviews, ...news];
+  return [...reviews, ...promoted, ...news];
 }
 ```
+
+> 실제 구현은 카드 1장씩 조회하며 `computeQuota()`로 남은 쿼터를 계산한다.
+> M6.3부터는 `/review` 첫 로드에서 이 계산을 `daily_plans`에 스냅샷으로 고정하고,
+> 실제 큐는 `getTodayPlan()`의 남은 목표를 따른다. 전체 정의는
+> [07-learning-engine.md](07-learning-engine.md) 5절.
 
 ## 안전장치
 
 | 상황 | 처리 |
 |---|---|
-| 카드가 이미 다른 탭에서 처리됨 | `UPDATE ... WHERE id=? AND last_reviewed_at=?` 조건부 갱신. 0행이면 "이미 처리됨" 응답 후 큐 새로고침 |
+| 카드가 이미 다른 탭에서 처리됨 | `UPDATE ... WHERE id=? AND reps=?` 낙관적 락 + `last_reviewed_at` 토큰. 0행이면 "이미 처리됨" 응답 후 큐 새로고침 |
+| 같은 리뷰가 재전송됨 | 카드 UPDATE와 리뷰 INSERT를 한 batch로 실행. `review_key = card_id:shown_at` 멱등키와 `(user_id, review_key)` 유니크 인덱스로 중복 방지 |
+| 복습이 상한을 넘음 | `daily_review`까지만 큐에 넣고, 남은 카드는 내일로 넘김 |
 | 사용자가 창을 오래 열어둠 | 매 POST마다 `Date.now()` 서버 기준으로 재계산. 클라이언트 시간 신뢰 안 함 |
 | 큐가 비었을 때 | "오늘은 다 했어요" 카드 + 내일 예정 카드 수 표시 |
 | 새벽 4시 이전 | 그날로 취급할지 선택. **MVP는 자정 기준**으로 단순하게 |
@@ -201,8 +227,11 @@ async function buildQueue(db: D1Database, userId: string, now: Date) {
 
 `request_retention = 0.9` 기본값으로 시작합니다.
 
-- 리뷰가 **1,000건 이상** 쌓이면 `ts-fsrs`의 옵티마이저로 개인 파라미터를 뽑을 수 있습니다.
-- 그전에 손대면 과적합입니다. **v1.1 이후 과제.**
+- 리뷰가 **1,000건 이상** 쌓이면 `/settings/fsrs/export`로 로그를 내려받습니다.
+- 외부 FSRS 옵티마이저에서 계산한 **21개 가중치 배열**을 설정 화면에 붙여넣습니다.
+- `users.fsrs_params`에 저장하고, `srs.ts`가 사용자별 스케줄러를 만듭니다.
+- 파라미터가 없거나 잘못되면 기본값으로 돌아갑니다.
+- 그전에 손대면 과적합입니다. **리뷰 1,000건 이후 과제.**
 
 ## 테스트해야 할 것
 

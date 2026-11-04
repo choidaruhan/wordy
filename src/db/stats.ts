@@ -13,7 +13,7 @@ export async function dailyStats(
     .prepare(
       `SELECT local_date AS date,
               COUNT(*) AS total,
-              SUM(CASE WHEN rating >= 3 THEN 1 ELSE 0 END) AS correct
+              SUM(CASE WHEN rating >= 2 THEN 1 ELSE 0 END) AS correct
          FROM reviews
         WHERE user_id = ? AND local_date >= ?
         GROUP BY local_date
@@ -32,7 +32,7 @@ export async function rangeSummary(
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN rating >= 3 THEN 1 ELSE 0 END) AS correct
+              SUM(CASE WHEN rating >= 2 THEN 1 ELSE 0 END) AS correct
          FROM reviews
         WHERE user_id = ? AND local_date >= ?`
     )
@@ -50,13 +50,33 @@ export async function countOn(db: D1Database, userId: string, date: string): Pro
   return row?.n ?? 0;
 }
 
+/**
+ * 외운 단어 = 고유 단어 수.
+ * 영→한 21일 이상 + 생산형 카드(한→영/빈칸) 1장 이상, 그중 하나가 7일 이상.
+ * 생산형 카드가 없으면 아직 Known이 아니다.
+ */
 export async function learnedCount(db: D1Database, userId: string): Promise<number> {
   const row = await db
     .prepare(
-      `SELECT COUNT(*) AS n FROM cards
-        WHERE user_id = ? AND state = 'review' AND scheduled_days >= 21`
+      `SELECT COUNT(*) AS n
+         FROM words w
+         JOIN decks d ON d.id = w.deck_id
+        WHERE d.user_id = ?
+          AND EXISTS (
+            SELECT 1 FROM cards r
+             WHERE r.word_id = w.id AND r.user_id = ?
+               AND r.card_type = 'recognition'
+               AND r.state = 'review'
+               AND r.scheduled_days >= 21
+          )
+          AND EXISTS (
+            SELECT 1 FROM cards p
+             WHERE p.word_id = w.id AND p.user_id = ?
+               AND p.card_type IN ('recall','cloze')
+               AND p.scheduled_days >= 7
+          )`
     )
-    .bind(userId)
+    .bind(userId, userId, userId)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }

@@ -1,0 +1,5 @@
+-- M6.5: 듣기·발음 설정
+
+ALTER TABLE users ADD COLUMN listening_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN voice_locale TEXT NOT NULL DEFAULT 'en-US';
+ALTER TABLE users ADD COLUMN voice_rate REAL NOT NULL DEFAULT 0.9;

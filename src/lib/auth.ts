@@ -1,6 +1,7 @@
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import type { Env, User } from '../types';
+import { parseFsrsParams } from './srs';
 
 const COOKIE = 'sid';
 const SESSION_DAYS = 30;
@@ -20,7 +21,8 @@ function randomToken(): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const USER_COLS = 'id, email, display_name, tz_offset_min, daily_new, daily_review';
+const USER_COLS =
+  'id, email, display_name, tz_offset_min, daily_new, daily_review, new_card_mode, listening_enabled, voice_locale, voice_rate, fsrs_params';
 
 export async function createSession(c: Context<Env>, userId: string): Promise<void> {
   const token = randomToken();
@@ -80,6 +82,11 @@ export async function getSessionUser(c: Context<Env>): Promise<User | null> {
     tz_offset_min: row.tz_offset_min,
     daily_new: row.daily_new,
     daily_review: row.daily_review,
+    new_card_mode: row.new_card_mode === 'fixed' ? 'fixed' : 'auto',
+    listening_enabled: Boolean(row.listening_enabled),
+    voice_locale: row.voice_locale === 'en-GB' ? 'en-GB' : 'en-US',
+    voice_rate: Number(row.voice_rate) || 0.9,
+    fsrs_params: parseFsrsParams(row.fsrs_params),
   };
 }
 
@@ -92,7 +99,16 @@ export async function findOrCreateUser(
     .bind(email)
     .first<User>();
 
-  if (existing) return existing;
+  if (existing) {
+    return {
+      ...existing,
+      new_card_mode: existing.new_card_mode === 'fixed' ? 'fixed' : 'auto',
+      listening_enabled: Boolean(existing.listening_enabled),
+      voice_locale: existing.voice_locale === 'en-GB' ? 'en-GB' : 'en-US',
+      voice_rate: Number(existing.voice_rate) || 0.9,
+      fsrs_params: parseFsrsParams(existing.fsrs_params),
+    };
+  }
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -107,6 +123,11 @@ export async function findOrCreateUser(
     tz_offset_min: 540,
     daily_new: 10,
     daily_review: 200,
+    new_card_mode: 'auto',
+    listening_enabled: false,
+    voice_locale: 'en-US',
+    voice_rate: 0.9,
+    fsrs_params: null,
   };
 }
 

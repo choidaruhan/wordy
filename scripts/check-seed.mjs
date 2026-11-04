@@ -16,10 +16,24 @@
 
 import { readFileSync } from 'node:fs';
 
-const HEADER = ['term', 'meaning', 'pos', 'example', 'example_ko'];
+const REQUIRED_HEADER = ['term', 'meaning', 'pos', 'example', 'example_ko'];
+const OPTIONAL_HEADER = [
+  'category',
+  'level',
+  'pronunciation',
+  'audio_url',
+  'collocations',
+  'synonyms',
+  'antonyms',
+  'example_2',
+  'example_2_ko',
+  'example_3',
+  'example_3_ko',
+];
 const POS = new Set([
   'n', 'v', 'adj', 'adv', 'prep', 'conj', 'pron', 'det', 'num', 'modal', 'phr',
 ]);
+const LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--')) ?? 'public/seeds/basic-1000.csv';
@@ -96,23 +110,53 @@ if (rows.length === 0) {
   process.exit(1);
 }
 
-// 헤더
-const header = rows[0].map((h) => h.trim());
-if (header.join(',') !== HEADER.join(',')) {
-  errors.push(`헤더가 다릅니다.\n    기대: ${HEADER.join(',')}\n    실제: ${header.join(',')}`);
+// 헤더: 앞 5개는 필수, 뒤에는 알려진 선택 컬럼만 허용
+const header = rows[0].map((h) => h.trim().toLowerCase());
+
+if (
+  header.length < REQUIRED_HEADER.length ||
+  header.slice(0, REQUIRED_HEADER.length).join(',') !== REQUIRED_HEADER.join(',')
+) {
+  errors.push(
+    `헤더가 다릅니다.\n    기대(앞 5개): ${REQUIRED_HEADER.join(',')}\n    실제: ${header.join(',')}`
+  );
 }
+
+for (const name of header.slice(REQUIRED_HEADER.length)) {
+  if (!OPTIONAL_HEADER.includes(name)) {
+    errors.push(`알 수 없는 컬럼입니다: "${name}"`);
+  }
+}
+
+if (errors.length > 0) {
+  console.log(`파일: ${file}`);
+  console.log(`\n오류 ${errors.length}건`);
+  for (const e of errors) console.log(`  ✗ ${e}`);
+  process.exit(1);
+}
+
+const read = (row, name) => {
+  const index = header.indexOf(name);
+  return index >= 0 ? (row[index] ?? '').trim() : '';
+};
 
 const seen = new Map();
 const data = rows.slice(1);
 
 data.forEach((r, i) => {
   const line = i + 2; // 헤더가 1행
-  if (r.length !== HEADER.length) {
-    errors.push(`L${line}: 컬럼 수 ${r.length}개 (기대 ${HEADER.length}개) — ${JSON.stringify(r)}`);
+  if (r.length !== header.length) {
+    errors.push(`L${line}: 컬럼 수 ${r.length}개 (기대 ${header.length}개) — ${JSON.stringify(r)}`);
     return;
   }
 
-  const [term, meaning, pos, example, exampleKo] = r.map((v) => v.trim());
+  const term = read(r, 'term');
+  const meaning = read(r, 'meaning');
+  const pos = read(r, 'pos');
+  const example = read(r, 'example');
+  const exampleKo = read(r, 'example_ko');
+  const level = read(r, 'level');
+  const category = read(r, 'category');
 
   if (!term) errors.push(`L${line}: term 이 비었습니다.`);
   if (!meaning) errors.push(`L${line}: meaning 이 비었습니다. (${term})`);
@@ -121,6 +165,31 @@ data.forEach((r, i) => {
 
   if (pos && !POS.has(pos)) {
     errors.push(`L${line}: pos "${pos}" 는 허용 값이 아닙니다. (${term})`);
+  }
+
+  if (level && !LEVELS.has(level)) {
+    errors.push(`L${line}: level "${level}" 은 A1~C2 중 하나여야 합니다. (${term})`);
+  }
+
+  if (category && category.length > 30) {
+    warnings.push(`L${line}: category 가 너무 깁니다. (${term})`);
+  }
+
+  for (const listName of ['collocations', 'synonyms', 'antonyms']) {
+    const value = read(r, listName);
+    if (value && value.split('|').some((part) => !part.trim())) {
+      warnings.push(`L${line}: ${listName} 에 빈 항목이 있습니다. (${term})`);
+    }
+  }
+
+  for (const suffix of ['2', '3']) {
+    const extra = read(r, `example_${suffix}`);
+    if (!extra) continue;
+    const has = extra.toLowerCase().includes(term.toLowerCase());
+    const stem = term.length > 4 ? term.slice(0, term.length - 1).toLowerCase() : null;
+    if (!has && !(stem && extra.toLowerCase().includes(stem))) {
+      warnings.push(`L${line}: example_${suffix} 안에 "${term}" 이 보이지 않습니다. → "${extra}"`);
+    }
   }
 
   if (term) {
@@ -154,7 +223,7 @@ if (expected !== null) {
 }
 
 const byPos = data.reduce((acc, r) => {
-  const p = (r[2] ?? '').trim() || '(없음)';
+  const p = read(r, 'pos') || '(없음)';
   acc[p] = (acc[p] ?? 0) + 1;
   return acc;
 }, {});

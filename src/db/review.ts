@@ -1,5 +1,6 @@
 import { schedule, type CardRow, type Scheduled } from '../lib/srs';
 import { blankOut } from '../lib/grade';
+import { computeQuota, isCorrectRating } from '../lib/quota';
 import type { Grade } from 'ts-fsrs';
 
 export type QueueCard = CardRow & {
@@ -11,15 +12,56 @@ export type QueueCard = CardRow & {
   example: string | null;
   example_ko: string | null;
   note: string | null;
+  category: string | null;
+  level: string | null;
+  pronunciation: string | null;
+  audio_url: string | null;
+  collocations: string | null;
+  synonyms: string | null;
+  antonyms: string | null;
+  extra_examples_raw: string | null;
+};
+
+export type ReviewSource = 'review' | 'weak';
+
+export type ReviewOptions = {
+  answer?: string | null;
+  responseMs?: number | null;
+  source?: ReviewSource;
+  gradingSource?: 'self' | 'server';
+  reviewKey?: string | null;
+  fsrsParams?: number[] | null;
 };
 
 const SELECT_CARD = `
   SELECT c.id, c.word_id, c.card_type, c.stability, c.difficulty, c.scheduled_days,
          c.learning_steps, c.reps, c.lapses, c.state, c.due_at, c.last_reviewed_at,
-         w.term, w.meaning, w.pos, w.example, w.example_ko, w.note
+         w.term, w.meaning, w.pos, w.example, w.example_ko, w.note,
+         w.category, w.level, w.pronunciation, w.audio_url,
+         w.collocations, w.synonyms, w.antonyms,
+         (
+           SELECT GROUP_CONCAT(line, char(10))
+             FROM (
+               SELECT e.sentence || char(9) || COALESCE(e.translation, '') AS line
+                 FROM word_examples e
+                WHERE e.word_id = w.id
+                ORDER BY e.created_at
+             )
+         ) AS extra_examples_raw
     FROM cards c
     JOIN words w ON w.id = c.word_id
 `;
+
+function chunked<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes('UNIQUE constraint failed');
+}
 
 /** 기한이 지난 복습 카드 1장 */
 export async function nextDueReview(
@@ -40,6 +82,53 @@ export async function nextDueReview(
     .first<QueueCard>();
 }
 
+/** 기한이 지난 복습 카드 1장 (유형 지정) */
+export async function nextDueReviewByType(
+  db: D1Database,
+  userId: string,
+  nowIso: string,
+  cardType: string
+): Promise<QueueCard | null> {
+  return db
+    .prepare(
+      `${SELECT_CARD}
+        WHERE c.user_id = ? AND c.suspended = 0
+          AND c.state IN ('learning','review','relearning')
+          AND c.card_type = ?
+          AND c.due_at <= ?
+        ORDER BY c.due_at ASC
+        LIMIT 1`
+    )
+    .bind(userId, cardType, nowIso)
+    .first<QueueCard>();
+}
+
+/** 최근 24시간 안에 Again을 받은 due 카드. 세션 초반 워밍업용. */
+export async function nextWarmupCard(
+  db: D1Database,
+  userId: string,
+  nowIso: string,
+  sinceIso: string
+): Promise<QueueCard | null> {
+  return db
+    .prepare(
+      `${SELECT_CARD}
+        WHERE c.user_id = ? AND c.suspended = 0
+          AND c.state IN ('learning','review','relearning')
+          AND c.due_at <= ?
+          AND EXISTS (
+            SELECT 1 FROM reviews r
+             WHERE r.card_id = c.id
+               AND r.rating = 1
+               AND r.reviewed_at >= ?
+          )
+        ORDER BY c.due_at ASC
+        LIMIT 1`
+    )
+    .bind(userId, nowIso, sinceIso)
+    .first<QueueCard>();
+}
+
 /** 아직 안 본 카드 1장 (신규 단어 소개용, 영→한만) */
 export async function nextNewCard(db: D1Database, userId: string): Promise<QueueCard | null> {
   return db
@@ -54,7 +143,7 @@ export async function nextNewCard(db: D1Database, userId: string): Promise<Queue
     .first<QueueCard>();
 }
 
-/** 승급된 카드 (한→영 / 빈칸). 신규 단어 쿼터를 쓰지 않고 먼저 나온다 */
+/** 승급된 카드 (한→영 / 빈칸 / 듣기). 신규 단어 쿼터를 쓰지 않는다 */
 export async function nextPromotedCard(
   db: D1Database,
   userId: string,
@@ -64,7 +153,7 @@ export async function nextPromotedCard(
     .prepare(
       `${SELECT_CARD}
         WHERE c.user_id = ? AND c.suspended = 0 AND c.state = 'new'
-          AND c.card_type IN ('recall','cloze') AND c.due_at <= ?
+          AND c.card_type IN ('recall','cloze','listening') AND c.due_at <= ?
         ORDER BY c.due_at ASC
         LIMIT 1`
     )
@@ -85,63 +174,122 @@ export async function getCardForReview(
 
 /**
  * 평점 저장. `reps` 조건으로 낙관적 락을 건다.
+ * 카드 UPDATE와 리뷰 INSERT는 같은 batch(트랜잭션)에서 실행한다.
  * 이미 다른 요청이 처리했다면 null 을 돌려준다.
  */
 export async function saveReview(
   db: D1Database,
   userId: string,
-  row: CardRow,
+  row: CardRow & { card_type?: string },
   rating: Grade,
   now: Date,
-  localDateStr: string
+  localDateStr: string,
+  opts: ReviewOptions = {}
 ): Promise<Scheduled | null> {
-  const s = schedule(row, now, rating);
+  const s = schedule(row, now, rating, opts.fsrsParams);
+  const questionType = row.card_type ?? null;
+  const gradingSource =
+    opts.gradingSource ?? (questionType === 'recognition' ? 'self' : 'server');
+  const isCorrect = isCorrectRating(rating) ? 1 : 0;
+  const source: ReviewSource = opts.source === 'weak' ? 'weak' : 'review';
+  const answer = opts.answer ? opts.answer.slice(0, 200) : null;
+  const responseMs =
+    opts.responseMs == null
+      ? null
+      : Math.max(0, Math.min(300_000, Math.trunc(opts.responseMs)));
+  const reviewKey = opts.reviewKey ?? null;
 
-  const res = await db
-    .prepare(
-      `UPDATE cards
-          SET due_at = ?, state = ?, stability = ?, difficulty = ?, scheduled_days = ?,
-              learning_steps = ?, reps = ?, lapses = ?, last_reviewed_at = ?
-        WHERE id = ? AND user_id = ? AND reps = ?`
-    )
-    .bind(
-      s.due_at,
-      s.state,
-      s.stability,
-      s.difficulty,
-      s.scheduled_days,
-      s.learning_steps,
-      s.reps,
-      s.lapses,
-      s.last_reviewed_at,
-      row.id,
-      userId,
-      row.reps
-    )
-    .run();
+  // 같은 프롬프트의 재전송은 여기서 끝낸다. (unique index가 최종 방어선)
+  if (reviewKey) {
+    const existing = await db
+      .prepare('SELECT 1 AS n FROM reviews WHERE user_id = ? AND review_key = ? LIMIT 1')
+      .bind(userId, reviewKey)
+      .first<{ n: number }>();
+    if (existing) return null;
+  }
 
-  if ((res.meta.changes ?? 0) === 0) return null;
+  let batch: D1Result[];
+  try {
+    batch = await db.batch([
+      db
+        .prepare(
+          `UPDATE cards
+              SET due_at = ?, state = ?, stability = ?, difficulty = ?, scheduled_days = ?,
+                  learning_steps = ?, reps = ?, lapses = ?, last_reviewed_at = ?
+            WHERE id = ? AND user_id = ? AND reps = ?`
+        )
+        .bind(
+          s.due_at,
+          s.state,
+          s.stability,
+          s.difficulty,
+          s.scheduled_days,
+          s.learning_steps,
+          s.reps,
+          s.lapses,
+          s.last_reviewed_at,
+          row.id,
+          userId,
+          row.reps
+        ),
+      db
+        .prepare(
+          `INSERT INTO reviews (
+             id, card_id, user_id, rating, local_date, reviewed_at,
+             elapsed_days, scheduled_days, reps_before, prev_state,
+             question_type, answer, is_correct, grading_source, response_ms,
+             review_key, attempt_seq, source, next_state, next_due_at
+           )
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?,
+                  (SELECT COUNT(*) + 1 FROM reviews WHERE card_id = ? AND local_date = ?),
+                  ?, ?, ?
+            WHERE EXISTS (
+              SELECT 1 FROM cards
+               WHERE id = ? AND user_id = ? AND last_reviewed_at = ?
+            )`
+        )
+        .bind(
+          crypto.randomUUID(),
+          row.id,
+          userId,
+          rating,
+          localDateStr,
+          s.last_reviewed_at,
+          s.elapsed_days,
+          s.scheduled_days,
+          row.reps,
+          row.state,
+          questionType,
+          answer,
+          isCorrect,
+          gradingSource,
+          responseMs,
+          reviewKey,
+          row.id,
+          localDateStr,
+          source,
+          s.state,
+          s.due_at,
+          row.id,
+          userId,
+          s.last_reviewed_at
+        ),
+    ]);
+  } catch (err) {
+    // 같은 리뷰가 동시에 들어온 경우: batch 전체가 롤백됐으므로 중복으로 처리한다.
+    if (isUniqueViolation(err)) return null;
+    throw err;
+  }
 
-  await db
-    .prepare(
-      `INSERT INTO reviews
-         (id, card_id, user_id, rating, local_date, reviewed_at,
-          elapsed_days, scheduled_days, reps_before, prev_state)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      crypto.randomUUID(),
-      row.id,
-      userId,
-      rating,
-      localDateStr,
-      s.last_reviewed_at,
-      s.elapsed_days,
-      s.scheduled_days,
-      row.reps,
-      row.state
-    )
-    .run();
+  const [cardResult, reviewResult] = batch;
+
+  if ((cardResult.meta.changes ?? 0) === 0) return null;
+
+  // UPDATE와 INSERT는 같은 batch다. 여기까지 왔는데 로그가 없으면 데이터 사고다.
+  if ((reviewResult.meta.changes ?? 0) === 0) {
+    throw new Error('리뷰 로그 저장에 실패했습니다.');
+  }
 
   return s;
 }
@@ -149,6 +297,7 @@ export async function saveReview(
 const LEECH_THRESHOLD = 8;
 const RECALL_UNLOCK_DAYS = 4;
 const CLOZE_UNLOCK_STABILITY = 7;
+const LISTENING_UNLOCK_DAYS = 14;
 
 /**
  * 기능어는 뜻→영어가 모호하다. 예: "~안에" → in / on / at
@@ -174,13 +323,10 @@ export async function maybeUnlockRecall(
   const nowIso = now.toISOString();
   const res = await db
     .prepare(
-      `INSERT INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
-       SELECT ?, ?, ?, 'recall', ?, 'new', ?
-        WHERE NOT EXISTS (
-          SELECT 1 FROM cards WHERE word_id = ? AND card_type = 'recall'
-        )`
+      `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+       VALUES (?, ?, ?, 'recall', ?, 'new', ?)`
     )
-    .bind(crypto.randomUUID(), card.word_id, userId, nowIso, nowIso, card.word_id)
+    .bind(crypto.randomUUID(), card.word_id, userId, nowIso, nowIso)
     .run();
 
   return (res.meta.changes ?? 0) > 0;
@@ -205,16 +351,154 @@ export async function maybeUnlockCloze(
   const nowIso = now.toISOString();
   const res = await db
     .prepare(
-      `INSERT INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
-       SELECT ?, ?, ?, 'cloze', ?, 'new', ?
-        WHERE NOT EXISTS (
-          SELECT 1 FROM cards WHERE word_id = ? AND card_type = 'cloze'
-        )`
+      `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+       VALUES (?, ?, ?, 'cloze', ?, 'new', ?)`
     )
-    .bind(crypto.randomUUID(), card.word_id, userId, nowIso, nowIso, card.word_id)
+    .bind(crypto.randomUUID(), card.word_id, userId, nowIso, nowIso)
     .run();
 
   return (res.meta.changes ?? 0) > 0;
+}
+
+/**
+ * 사용자가 듣기를 켠 경우, 충분히 안정된 영→한 카드에 듣기 카드를 만든다.
+ * 듣기 카드는 단어를 보여주지 않고 TTS 음성만 들려준다.
+ */
+export async function maybeUnlockListening(
+  db: D1Database,
+  userId: string,
+  card: QueueCard,
+  next: Scheduled,
+  now: Date,
+  enabled: boolean
+): Promise<boolean> {
+  if (!enabled) return false;
+  if (card.card_type !== 'recognition') return false;
+  if (next.state !== 'review' || next.scheduled_days < LISTENING_UNLOCK_DAYS) return false;
+
+  const nowIso = now.toISOString();
+  const res = await db
+    .prepare(
+      `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+       VALUES (?, ?, ?, 'listening', ?, 'new', ?)`
+    )
+    .bind(crypto.randomUUID(), card.word_id, userId, nowIso, nowIso)
+    .run();
+
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/**
+ * 승급 누락 복구. `/review` 로드 시 호출한다.
+ * 조건을 만족하지만 카드가 없는 단어를 찾아 멱등적으로 생성한다.
+ */
+export async function ensureUnlocks(
+  db: D1Database,
+  userId: string,
+  now: Date = new Date(),
+  listeningEnabled = false
+): Promise<number> {
+  const [recall, cloze, listening] = await Promise.all([
+    db
+      .prepare(
+        `SELECT c.word_id
+           FROM cards c
+           JOIN words w ON w.id = c.word_id
+          WHERE c.user_id = ?
+            AND c.card_type = 'recognition'
+            AND c.state = 'review'
+            AND c.scheduled_days >= ?
+            AND (w.pos IS NULL OR w.pos NOT IN ('det','pron','prep','conj','modal'))
+            AND NOT EXISTS (
+              SELECT 1 FROM cards x
+               WHERE x.word_id = c.word_id AND x.card_type = 'recall'
+            )
+          LIMIT 50`
+      )
+      .bind(userId, RECALL_UNLOCK_DAYS)
+      .all<{ word_id: string }>(),
+    db
+      .prepare(
+        `SELECT c.word_id, w.term, w.example
+           FROM cards c
+           JOIN words w ON w.id = c.word_id
+          WHERE c.user_id = ?
+            AND c.card_type = 'recognition'
+            AND c.state = 'review'
+            AND c.stability >= ?
+            AND w.example IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM cards x
+               WHERE x.word_id = c.word_id AND x.card_type = 'cloze'
+            )
+          LIMIT 50`
+      )
+      .bind(userId, CLOZE_UNLOCK_STABILITY)
+      .all<{ word_id: string; term: string; example: string }>(),
+    listeningEnabled
+      ? db
+          .prepare(
+            `SELECT c.word_id
+               FROM cards c
+              WHERE c.user_id = ?
+                AND c.card_type = 'recognition'
+                AND c.state = 'review'
+                AND c.scheduled_days >= ?
+                AND NOT EXISTS (
+                  SELECT 1 FROM cards x
+                   WHERE x.word_id = c.word_id AND x.card_type = 'listening'
+                )
+              LIMIT 50`
+          )
+          .bind(userId, LISTENING_UNLOCK_DAYS)
+          .all<{ word_id: string }>()
+      : Promise.resolve({ results: [] as { word_id: string }[] }),
+  ]);
+
+  const nowIso = now.toISOString();
+  const stmts: D1PreparedStatement[] = [];
+
+  for (const row of recall.results) {
+    stmts.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+           VALUES (?, ?, ?, 'recall', ?, 'new', ?)`
+        )
+        .bind(crypto.randomUUID(), row.word_id, userId, nowIso, nowIso)
+    );
+  }
+
+  for (const row of cloze.results) {
+    if (blankOut(row.example, row.term) === null) continue;
+    stmts.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+           VALUES (?, ?, ?, 'cloze', ?, 'new', ?)`
+        )
+        .bind(crypto.randomUUID(), row.word_id, userId, nowIso, nowIso)
+    );
+  }
+
+  for (const row of listening.results) {
+    stmts.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO cards (id, word_id, user_id, card_type, due_at, state, created_at)
+           VALUES (?, ?, ?, 'listening', ?, 'new', ?)`
+        )
+        .bind(crypto.randomUUID(), row.word_id, userId, nowIso, nowIso)
+    );
+  }
+
+  if (stmts.length === 0) return 0;
+
+  for (const chunk of chunked(stmts, 50)) {
+    await db.batch(chunk);
+  }
+
+  return stmts.length;
 }
 
 /** 계속 틀리는 카드는 큐에서 빼고 '어려운 단어'로 보낸다 */
@@ -237,25 +521,35 @@ export async function maybeSuspendLeech(
 export type Progress = {
   done: number;
   remaining: number;
+  reviewLeft: number;
+  promotedLeft: number;
   newLeft: number;
+  reviewDone: number;
+  newDone: number;
+  dueReview: number;
+  promotedDue: number;
+  newAvailable: number;
 };
 
-/** 오늘 진행률 = 오늘 한 카드 + 남은 카드 */
+/** 오늘 진행률 = 오늘 한 카드 + 남은 카드. daily_review 상한을 반영한다. */
 export async function getProgress(
   db: D1Database,
   userId: string,
   today: string,
   nowIso: string,
-  dailyNew: number
+  dailyNew: number,
+  dailyReview: number
 ): Promise<Progress> {
-  const [done, newDone, due, newCards] = await Promise.all([
+  const [done, newDone, due, promoted, newCards] = await Promise.all([
     db
       .prepare('SELECT COUNT(*) AS n FROM reviews WHERE user_id = ? AND local_date = ?')
       .bind(userId, today)
       .first<{ n: number }>(),
     db
       .prepare(
-        'SELECT COUNT(*) AS n FROM reviews WHERE user_id = ? AND local_date = ? AND reps_before = 0'
+        `SELECT COUNT(*) AS n FROM reviews
+          WHERE user_id = ? AND local_date = ?
+            AND reps_before = 0 AND question_type = 'recognition'`
       )
       .bind(userId, today)
       .first<{ n: number }>(),
@@ -272,18 +566,43 @@ export async function getProgress(
       .prepare(
         `SELECT COUNT(*) AS n FROM cards
           WHERE user_id = ? AND suspended = 0 AND state = 'new'
+            AND card_type IN ('recall','cloze','listening')
+            AND due_at <= ?`
+      )
+      .bind(userId, nowIso)
+      .first<{ n: number }>(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM cards
+          WHERE user_id = ? AND suspended = 0 AND state = 'new'
             AND card_type = 'recognition'`
       )
       .bind(userId)
       .first<{ n: number }>(),
   ]);
 
-  const newLeft = Math.min(Math.max(0, dailyNew - (newDone?.n ?? 0)), newCards?.n ?? 0);
+  const doneCount = done?.n ?? 0;
+  const q = computeQuota({
+    dailyNew,
+    dailyReview,
+    done: doneCount,
+    newDone: newDone?.n ?? 0,
+    dueReview: due?.n ?? 0,
+    promotedDue: promoted?.n ?? 0,
+    newAvailable: newCards?.n ?? 0,
+  });
 
   return {
-    done: done?.n ?? 0,
-    remaining: (due?.n ?? 0) + newLeft,
-    newLeft,
+    done: doneCount,
+    remaining: q.remaining,
+    reviewLeft: q.reviewLeft,
+    promotedLeft: q.promotedLeft,
+    newLeft: q.newLeft,
+    reviewDone: q.reviewDone,
+    newDone: newDone?.n ?? 0,
+    dueReview: due?.n ?? 0,
+    promotedDue: promoted?.n ?? 0,
+    newAvailable: newCards?.n ?? 0,
   };
 }
 
