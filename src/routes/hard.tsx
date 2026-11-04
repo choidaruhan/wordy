@@ -55,10 +55,10 @@ hard.get('/hard', async (c) => {
   return c.html(
     <Layout title="취약 단어" user={user}>
       <div class="flex items-baseline justify-between">
-        <h1 class="text-xl font-semibold">취약 단어</h1>
+        <h1 class="text-2xl font-semibold">취약 단어</h1>
         <span class="text-sm text-muted">{report.all.length}개</span>
       </div>
-      <p class="mt-2 max-w-[34rem] text-sm leading-6 text-muted">
+      <p class="mt-2 max-w-xl text-sm leading-6 text-muted">
         최근 성과가 나쁜 단어를 모읍니다. 격리된 단어는 연상법을 적은 뒤 학습에 다시 포함할 수
         있습니다.
       </p>
@@ -86,7 +86,7 @@ function TabLink(props: { href: string; active: boolean; label: string }) {
   return (
     <a
       href={props.href}
-      class={`border-b-2 px-3 py-2 text-sm ${
+      class={`border-b-2 px-4 py-3 text-sm ${
         props.active
           ? 'border-accent text-accent'
           : 'border-transparent text-muted hover:text-ink'
@@ -116,7 +116,7 @@ function WeakList(props: {
           {props.weakDue > 0 ? (
             <a
               href="/review?mode=weak"
-              class="mt-5 inline-block rounded bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+              class="mt-5 inline-block rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
             >
               취약 단어 연습 ({props.weakDue}장)
             </a>
@@ -141,7 +141,7 @@ function WeakList(props: {
 
       {props.stale.length > 0 ? (
         <section class="mt-10 border-t border-line pt-6">
-          <h2 class="text-sm font-semibold">재확인 필요</h2>
+          <h2 class="text-base font-semibold">재확인 필요</h2>
           <p class="mt-1 text-sm leading-6 text-muted">
             90일 이상 복습하지 않아 취약 판정에서 제외한 단어입니다. 복습이 다시 시작되면
             자동으로 평가합니다.
@@ -150,7 +150,7 @@ function WeakList(props: {
             {props.stale.map((s) => (
               <li class="flex items-baseline justify-between gap-4 border-b border-line py-3">
                 <span class="min-w-0">
-                  <span class="font-word text-[15px]">{s.term}</span>
+                  <span class="font-word text-base">{s.term}</span>
                   <span class="ml-2 text-sm text-muted">{s.meaning}</span>
                 </span>
                 <span class="shrink-0 text-xs text-muted">
@@ -176,7 +176,7 @@ function WeakItem(props: { word: WeakWord; now: Date }) {
           <span class="ml-2 text-sm text-muted">{w.meaning}</span>
         </div>
         <span
-          class={`shrink-0 rounded-sm px-2 py-0.5 text-xs ${
+          class={`shrink-0 rounded-sm px-2 py-1 text-xs ${
             w.status === 'weak' ? 'bg-danger/10 text-danger' : 'bg-mark/30 text-ink'
           }`}
         >
@@ -215,7 +215,7 @@ function ObservingList(props: { words: ObservingWord[]; now: Date }) {
         {props.words.map((w) => (
           <li class="flex items-baseline justify-between gap-4 border-b border-line py-3">
             <span class="min-w-0">
-              <span class="font-word text-[15px]">{w.term}</span>
+              <span class="font-word text-base">{w.term}</span>
               <span class="ml-2 text-sm text-muted">{w.meaning}</span>
             </span>
             <span class="shrink-0 text-xs text-muted">
@@ -273,11 +273,11 @@ function LeechList(props: {
                 value={w.note ?? ''}
                 maxlength={200}
                 placeholder="연상법을 적어보세요"
-                class="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted/70"
+                class="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
               />
               <button
                 type="submit"
-                class="rounded border border-line bg-surface px-4 py-2 text-sm hover:border-accent"
+                class="rounded border border-line bg-surface px-4 py-3 text-sm hover:border-accent"
               >
                 저장
               </button>

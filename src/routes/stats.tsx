@@ -34,7 +34,7 @@ stats.get('/stats', async (c) => {
 
   return c.html(
     <Layout title="통계" user={user}>
-      <h1 class="text-xl font-semibold">통계</h1>
+      <h1 class="text-2xl font-semibold">통계</h1>
 
       <dl class="mt-6 grid grid-cols-2 gap-px border border-line bg-line">
         <Cell label="오늘 학습" value={`${todayCount}`} unit="장" />
@@ -55,7 +55,7 @@ stats.get('/stats', async (c) => {
 
       <section class="mt-10">
         <div class="flex items-baseline justify-between">
-          <h2 class="text-sm font-semibold">최근 {CHART_DAYS}일</h2>
+          <h2 class="text-base font-semibold">최근 {CHART_DAYS}일</h2>
           <span class="text-xs text-muted">총 {summary.total}장</span>
         </div>
 
@@ -67,7 +67,7 @@ stats.get('/stats', async (c) => {
             const day = Number(date.slice(8, 10));
 
             return (
-              <div class="flex flex-1 flex-col items-center gap-1.5">
+              <div class="flex flex-1 flex-col items-center gap-2">
                 <div
                   class="flex h-28 w-full items-end"
                   title={`${date} · ${total}장`}
@@ -77,7 +77,7 @@ stats.get('/stats', async (c) => {
                     style={`height:${height}%`}
                   ></div>
                 </div>
-                <span class="text-[10px] tabular-nums text-muted">{day}</span>
+                <span class="text-xs tabular-nums text-muted">{day}</span>
               </div>
             );
           })}
@@ -85,7 +85,7 @@ stats.get('/stats', async (c) => {
       </section>
 
       <section class="mt-10 border-t border-line pt-6">
-        <h2 class="text-sm font-semibold">카드</h2>
+        <h2 class="text-base font-semibold">카드</h2>
         <p class="mt-1 text-sm leading-6 text-muted">
           카드는 단어가 아니라 <span class="text-ink">학습 상태</span>입니다. 한 단어가
           영→한, 한→영, 빈칸 카드를 각각 가질 수 있습니다.

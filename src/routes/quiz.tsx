@@ -25,8 +25,8 @@ quiz.get('/quiz', async (c) => {
 
   return c.html(
     <Layout title="객관식 테스트" user={user}>
-      <h1 class="text-xl font-semibold">객관식 테스트</h1>
-      <p class="mt-2 max-w-[34rem] text-sm leading-6 text-muted">
+      <h1 class="text-2xl font-semibold">객관식 테스트</h1>
+      <p class="mt-2 max-w-xl text-sm leading-6 text-muted">
         지금 얼마나 기억하는지 확인합니다. 결과는 학습 일정에 영향을 주지 않습니다.
       </p>
 
@@ -172,8 +172,8 @@ function Progress(props: { current: number; total: number; correct: number }) {
         </span>
         <span>{props.correct}개 정답</span>
       </div>
-      <div class="mt-2 h-[3px] w-full bg-line">
-        <div class="h-[3px] bg-accent" style={`width:${pct}%`}></div>
+      <div class="mt-2 h-1 w-full bg-line">
+        <div class="h-1 bg-accent" style={`width:${pct}%`}></div>
       </div>
     </>
   );
@@ -189,7 +189,7 @@ function QuestionView(props: { question: QuizQuestion; session: QuizSession; don
       <article class="mt-8 rounded-sm border border-line border-b-2 border-b-line bg-surface">
         <div class="px-6 py-10 text-center sm:px-10 sm:py-14">
           <p class="text-xs text-muted">이 단어의 뜻은?</p>
-          <p class="mt-3 font-word text-[2.5rem] leading-tight tracking-tight sm:text-[3rem]">
+          <p class="mt-3 font-word text-4xl leading-tight tracking-tight sm:text-5xl">
             {props.question.term}
           </p>
         </div>
@@ -237,7 +237,7 @@ function Feedback(props: {
           <p class={`text-sm font-medium ${props.correct ? 'text-accent' : 'text-danger'}`}>
             {props.correct ? '정답' : '오답'}
           </p>
-          <p class="mt-3 font-word text-[2rem] leading-tight tracking-tight sm:text-[2.5rem]">
+          <p class="mt-3 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
             {props.question.term}
           </p>
           <p class="mt-3 text-lg">{props.question.meaning}</p>
@@ -280,11 +280,11 @@ function ResultView(props: { result: QuizResult }) {
 
       {props.result.wrong.length > 0 ? (
         <section class="mt-8 border-t border-line pt-5">
-          <h2 class="text-sm font-semibold">틀린 단어 {props.result.wrong.length}개</h2>
+          <h2 class="text-base font-semibold">틀린 단어 {props.result.wrong.length}개</h2>
           <ul class="mt-3 space-y-3">
             {props.result.wrong.map((w) => (
               <li class="text-sm">
-                <span class="font-word text-[15px]">{w.term}</span>
+                <span class="font-word text-base">{w.term}</span>
                 <span class="ml-2 text-muted">{w.meaning}</span>
                 {w.chosen ? (
                   <span class="ml-2 text-xs text-danger">내 답: {w.chosen}</span>
@@ -298,10 +298,10 @@ function ResultView(props: { result: QuizResult }) {
       )}
 
       <div class="mt-8 flex gap-2">
-        <a href="/quiz" class="rounded bg-accent px-5 py-2.5 text-sm text-white hover:opacity-90">
+        <a href="/quiz" class="rounded bg-accent px-5 py-3 text-sm text-white hover:opacity-90">
           다시 하기
         </a>
-        <a href="/" class="rounded border border-line px-5 py-2.5 text-sm hover:border-accent">
+        <a href="/" class="rounded border border-line px-5 py-3 text-sm hover:border-accent">
           홈으로
         </a>
       </div>

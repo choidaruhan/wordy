@@ -24,7 +24,7 @@ settings.get('/settings', async (c) => {
 
   return c.html(
     <Layout title="설정" user={user}>
-      <h1 class="text-xl font-semibold">설정</h1>
+      <h1 class="text-2xl font-semibold">설정</h1>
 
       {saved ? (
         <p class="mt-4 rounded border border-accent/30 bg-accent-soft px-4 py-3 text-sm text-accent">
@@ -43,7 +43,7 @@ settings.get('/settings', async (c) => {
             value={user.display_name ?? ''}
             maxlength={40}
             autocomplete="nickname"
-            class="mt-2 w-full rounded border border-line bg-surface px-3 py-2 text-sm"
+            class="mt-2 w-full rounded border border-line bg-surface px-3 py-3 text-sm"
           />
         </div>
 
@@ -109,7 +109,7 @@ settings.get('/settings', async (c) => {
             max={1000}
             step={10}
             value={String(user.daily_review)}
-            class="mt-2 w-32 rounded border border-line bg-surface px-3 py-2 text-sm tabular-nums"
+            class="mt-2 w-32 rounded border border-line bg-surface px-3 py-3 text-sm tabular-nums"
           />
         </div>
 
@@ -174,7 +174,7 @@ settings.get('/settings', async (c) => {
           <select
             id="voice_rate"
             name="voice_rate"
-            class="mt-1 rounded border border-line bg-surface px-3 py-2 text-sm"
+            class="mt-1 rounded border border-line bg-surface px-3 py-3 text-sm"
           >
             {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2].map((rate) => (
               <option value={String(rate)} selected={Math.abs(user.voice_rate - rate) < 0.01}>
@@ -193,7 +193,7 @@ settings.get('/settings', async (c) => {
       </form>
 
       <section class="mt-12 border-t border-line pt-6">
-        <h2 class="text-sm font-semibold">FSRS 개인화</h2>
+        <h2 class="text-base font-semibold">FSRS 개인화</h2>
         <p class="mt-1 text-sm leading-6 text-muted">
           리뷰가 1,000건 이상 쌓이면 개인 기억 패턴에 맞춘 파라미터를 적용할 수 있습니다.
         </p>
@@ -223,7 +223,7 @@ settings.get('/settings', async (c) => {
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <a
             href="/settings/fsrs/export"
-            class="rounded border border-line px-4 py-2 text-sm hover:border-accent"
+            class="rounded border border-line px-4 py-3 text-sm hover:border-accent"
           >
             리뷰 로그 내보내기 (JSON)
           </a>
@@ -231,7 +231,7 @@ settings.get('/settings', async (c) => {
             <form method="post" action="/settings/fsrs/reset">
               <button
                 type="submit"
-                class="rounded border border-line px-4 py-2 text-sm text-muted hover:border-danger hover:text-danger"
+                class="rounded border border-line px-4 py-3 text-sm text-muted hover:border-danger hover:text-danger"
               >
                 기본값으로 초기화
               </button>
@@ -253,13 +253,13 @@ settings.get('/settings', async (c) => {
             rows={4}
             spellcheck={false}
             placeholder="[0.212, 1.2931, ...]"
-            class="mt-2 w-full rounded border border-line bg-surface px-3 py-2 font-mono text-xs"
+            class="mt-2 w-full rounded border border-line bg-surface px-3 py-3 font-mono text-xs"
           >
             {user.fsrs_params ? JSON.stringify(user.fsrs_params) : ''}
           </textarea>
           <button
             type="submit"
-            class="mt-2 rounded bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+            class="mt-2 rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
           >
             파라미터 적용
           </button>
@@ -267,7 +267,7 @@ settings.get('/settings', async (c) => {
       </section>
 
       <section class="mt-12 border-t border-line pt-6">
-        <h2 class="text-sm font-semibold">계정</h2>
+        <h2 class="text-base font-semibold">계정</h2>
         <p class="mt-1 text-sm text-muted">{user.email}</p>
         <form method="post" action="/logout" class="mt-3">
           <button type="submit" class="text-sm text-muted hover:text-danger">

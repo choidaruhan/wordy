@@ -14,12 +14,12 @@ home.get('/', async (c) => {
     return c.html(
       <Layout title="Wordy" user={null}>
         <section class="pt-6">
-          <h1 class="font-word text-[2.6rem] leading-[1.2] tracking-tight">
+          <h1 class="font-word text-4xl leading-tight tracking-tight sm:text-5xl">
             뜻을 가리고,
             <br />
             꺼내 보세요.
           </h1>
-          <p class="mt-6 max-w-[34rem] text-[15px] leading-7 text-muted">
+          <p class="mt-6 max-w-xl text-base leading-7 text-muted">
             단어장을 다시 읽는 것은 공부가 아닙니다. 기억에서 꺼내는 순간에만 남습니다.
             하루 10분, 오늘 볼 카드만큼만.
           </p>
@@ -159,7 +159,7 @@ function Dashboard(props: {
       </a>
 
       <div class="mt-10 flex items-baseline justify-between">
-        <h2 class="text-sm font-semibold">단어장</h2>
+        <h2 class="text-base font-semibold">단어장</h2>
         <a href="/decks" class="text-sm text-accent hover:underline">
           관리
         </a>
@@ -176,7 +176,7 @@ function Dashboard(props: {
         <ul class="mt-1">
           {props.decks.map((d) => (
             <li class="flex items-baseline justify-between border-b border-line py-3">
-              <a href={`/decks/${d.id}`} class="text-[15px] hover:text-accent">
+              <a href={`/decks/${d.id}`} class="text-base hover:text-accent">
                 {d.name}
               </a>
               <span class="text-sm text-muted">{d.word_count}개</span>

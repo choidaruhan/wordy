@@ -19,7 +19,7 @@ auth.get('/login', (c) => {
 
   return c.html(
     <Layout title="로그인" user={null}>
-      <h1 class="text-xl font-semibold">로그인</h1>
+      <h1 class="text-2xl font-semibold">로그인</h1>
       <p class="mt-2 text-sm leading-6 text-muted">
         계정은 학습 기록을 기기 간에 이어가기 위해서만 씁니다. 광고나 메일은 보내지 않습니다.
       </p>

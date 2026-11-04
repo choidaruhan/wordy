@@ -36,6 +36,7 @@
 | [docs/05-ui-routes.md](docs/05-ui-routes.md) | 라우트 목록, HTMX 인터랙션 명세 | |
 | [docs/06-learning-design.md](docs/06-learning-design.md) | **학습 설계 — 어떻게 외우게 할 것인가** | |
 | [docs/07-learning-engine.md](docs/07-learning-engine.md) | **M6 학습 엔진 명세 — 취약 단어·세션·적응형 배분** | M6.6 반영 |
+| [docs/08-design-system.md](docs/08-design-system.md) | 4px 간격·글자 크기·색 토큰 | 신규 |
 
 ---
 

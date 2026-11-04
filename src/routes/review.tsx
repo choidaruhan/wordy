@@ -603,8 +603,8 @@ function Fragment(props: {
         <span>{props.prog.done}장 완료</span>
         <span>{props.prog.remaining}장 남음</span>
       </div>
-      <div class="mt-2 h-[3px] w-full bg-line">
-        <div class="h-[3px] bg-accent transition-[width]" style={`width:${pct}%`}></div>
+      <div class="mt-2 h-1 w-full bg-line">
+        <div class="h-1 bg-accent transition-[width]" style={`width:${pct}%`}></div>
       </div>
 
       <div class="mt-10">{CardView({ ...props, source })}</div>
@@ -687,7 +687,7 @@ function RecognitionCard(props: {
           {stage === 'intro' ? '새 단어' : stage === 'back' ? '정답' : '뜻을 떠올려 보세요'}
         </p>
 
-        <p class="mt-4 font-word text-[2.5rem] leading-tight tracking-tight sm:text-[3rem]">
+        <p class="mt-4 font-word text-4xl leading-tight tracking-tight sm:text-5xl">
           {card.term}
         </p>
 
@@ -884,7 +884,7 @@ function BlankedSentence(props: { text: string }) {
         <>
           {part}
           {i < parts.length - 1 ? (
-            <span class="mx-1 inline-block min-w-[3.5rem] border-b-2 border-accent/40 align-baseline">
+            <span class="mx-1 inline-block min-w-14 border-b-2 border-accent/40 align-baseline">
               &nbsp;
             </span>
           ) : null}
@@ -912,7 +912,7 @@ function ProductionResult(props: {
           <p class="text-sm font-medium text-danger">오답</p>
         )}
 
-        <p class="mt-4 font-word text-[2rem] leading-tight tracking-tight sm:text-[2.5rem]">
+        <p class="mt-4 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
           {chars.map((c) => (
             <span class={c.ok ? '' : 'text-danger underline decoration-danger/40 underline-offset-4'}>
               {c.ch}
@@ -925,7 +925,7 @@ function ProductionResult(props: {
 
       <div class="border-t border-line px-6 py-6 sm:px-10">
         <p class="text-xs text-muted">내 답</p>
-        <p class="mt-1 font-word text-[15px]">{props.answer.trim() || '(입력 없음)'}</p>
+        <p class="mt-1 font-word text-base">{props.answer.trim() || '(입력 없음)'}</p>
 
         <p class="mt-4 text-xs text-muted">뜻</p>
         <p class="mt-1">{card.meaning}</p>
@@ -978,7 +978,7 @@ function WordContext(props: { card: QueueCard; compact?: boolean }) {
       {hasPrimary ? (
         <div>
           <p class="text-xs text-muted">예문</p>
-          <p class="mt-1 font-word text-[15px] leading-6">{props.card.example}</p>
+          <p class="mt-1 font-word text-base leading-6">{props.card.example}</p>
           {props.card.example_ko ? (
             <p class="mt-1 text-sm leading-6 text-muted">{props.card.example_ko}</p>
           ) : null}
@@ -991,7 +991,7 @@ function WordContext(props: { card: QueueCard; compact?: boolean }) {
           <div class="mt-1 space-y-2">
             {extras.map((example) => (
               <div>
-                <p class="font-word text-[15px] leading-6">{example.sentence}</p>
+                <p class="font-word text-base leading-6">{example.sentence}</p>
                 {example.translation ? (
                   <p class="text-sm leading-6 text-muted">{example.translation}</p>
                 ) : null}
@@ -1188,7 +1188,7 @@ function RateButton(props: {
       class={`rounded border px-3 py-3 text-center transition-colors ${tones[props.tone]}`}
     >
       <span class="block text-sm font-medium leading-tight">{props.label}</span>
-      <span class={`mt-0.5 block text-xs ${props.tone === 'good' ? 'text-white/70' : 'text-muted'}`}>
+      <span class={`mt-1 block text-xs ${props.tone === 'good' ? 'text-white/70' : 'text-muted'}`}>
         {props.preview}
       </span>
     </button>
@@ -1238,13 +1238,13 @@ function WeakDone(props: {
       <div class="mt-8 flex justify-center gap-2">
         <a
           href="/hard?tab=weak"
-          class="rounded border border-line px-5 py-2.5 text-sm hover:border-accent"
+          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
         >
           취약 단어 목록
         </a>
         <a
           href="/"
-          class="rounded border border-line px-5 py-2.5 text-sm hover:border-accent"
+          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
         >
           대시보드로
         </a>
@@ -1277,13 +1277,13 @@ function Done(props: {
       <div class="mt-8 flex justify-center gap-2">
         <a
           href="/hard?tab=weak"
-          class="rounded border border-line px-5 py-2.5 text-sm hover:border-accent"
+          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
         >
           취약 단어
         </a>
         <a
           href="/"
-          class="rounded border border-line px-5 py-2.5 text-sm hover:border-accent"
+          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
         >
           대시보드로
         </a>

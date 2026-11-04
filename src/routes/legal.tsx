@@ -15,12 +15,12 @@ const SITE = {
 legal.get('/privacy', (c) => {
   return c.html(
     <Layout title="개인정보처리방침" user={c.get('user')}>
-      <h1 class="text-xl font-semibold">개인정보처리방침</h1>
+      <h1 class="text-2xl font-semibold">개인정보처리방침</h1>
       <p class="mt-2 text-sm text-muted">
         {SITE.name} · 시행일 {SITE.effectiveDate}
       </p>
 
-      <p class="mt-6 text-[15px] leading-7">
+      <p class="mt-6 text-base leading-7">
         {SITE.name}(이하 "서비스")는 이용자의 개인정보를 최소한으로 수집하고, 수집한 정보를
         학습 기능 제공 목적으로만 사용합니다. 광고·마케팅 목적의 판매나 공유는 하지 않습니다.
       </p>
@@ -123,7 +123,7 @@ legal.get('/privacy', (c) => {
 legal.get('/terms', (c) => {
   return c.html(
     <Layout title="이용약관" user={c.get('user')}>
-      <h1 class="text-xl font-semibold">이용약관</h1>
+      <h1 class="text-2xl font-semibold">이용약관</h1>
       <p class="mt-2 text-sm text-muted">
         {SITE.name} · 시행일 {SITE.effectiveDate}
       </p>
@@ -210,8 +210,8 @@ legal.get('/terms', (c) => {
 function Section(props: { title: string; children?: any }) {
   return (
     <section class="mt-8">
-      <h2 class="text-sm font-semibold">{props.title}</h2>
-      <div class="mt-2 text-[15px] leading-7">{props.children}</div>
+      <h2 class="text-base font-semibold">{props.title}</h2>
+      <div class="mt-2 text-base leading-7">{props.children}</div>
     </section>
   );
 }

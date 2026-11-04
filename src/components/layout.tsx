@@ -105,7 +105,7 @@ function Tab(props: { href: string; label: string }) {
     <a
       href={props.href}
       data-tab
-      class="flex-1 py-3 text-center text-xs text-muted hover:text-ink"
+      class="flex-1 py-4 text-center text-xs text-muted hover:text-ink"
     >
       {props.label}
     </a>
@@ -135,7 +135,7 @@ export function Layout(props: { title: string; user: User | null; children?: any
       >
         <header class="border-b border-line">
           <div class="mx-auto flex max-w-2xl items-baseline justify-between px-5 py-4">
-            <a href="/" class="text-[15px] font-semibold tracking-tight">
+            <a href="/" class="text-base font-semibold tracking-tight">
               Wordy
             </a>
             {props.user ? (
