@@ -111,6 +111,7 @@ function encodePng(size, rgba) {
 }
 
 mkdirSync('public/icons', { recursive: true });
+mkdirSync('brand', { recursive: true });
 
 for (const [name, size] of [
   ['icon-192.png', 192],
@@ -120,3 +121,7 @@ for (const [name, size] of [
   writeFileSync(`public/icons/${name}`, encodePng(size, render(size)));
   console.log(`public/icons/${name} (${size}×${size})`);
 }
+
+// Google OAuth 동의 화면 로고: 120×120, 1MB 이하
+writeFileSync('brand/oauth-logo-120.png', encodePng(120, render(120)));
+console.log('brand/oauth-logo-120.png (120×120)');
