@@ -33,8 +33,9 @@
 | GET | `/settings` | 필요 | 전체 | 학습 목표 설정 |
 | POST | `/settings` | 필요 | 302 | 설정 저장 |
 | GET | `/decks/:id/export` | 필요 | 파일 | 단어장 CSV 다운로드 |
-| GET | `/quiz` | 필요 | 전체 | 테스트 설정 |
-| POST | `/quiz/start` | 필요 | 302 | 새 테스트 생성 |
+| GET | `/terms` | — | 전체 | 이용약관 |
+| GET | `/privacy` | — | 전체 | 개인정보처리방침 |
+| GET | `/quiz` | 필요 | 전체 | 테스트 설정 || POST | `/quiz/start` | 필요 | 302 | 새 테스트 생성 |
 | GET | `/quiz/session` | 필요 | 전체 | 현재 문제 |
 | POST | `/quiz/answer` | 필요 | 조각 | 채점 → 피드백 |
 | POST | `/quiz/next` | 필요 | 조각 | 다음 문제 또는 결과 |

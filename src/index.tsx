@@ -9,6 +9,7 @@ import hard from './routes/hard';
 import stats from './routes/stats';
 import quiz from './routes/quiz';
 import settings from './routes/settings';
+import legal from './routes/legal';
 
 const app = new Hono<Env>();
 
@@ -26,6 +27,7 @@ app.route('/', hard);
 app.route('/', stats);
 app.route('/', quiz);
 app.route('/', settings);
+app.route('/', legal);
 
 app.notFound((c) => c.text('페이지를 찾을 수 없습니다.', 404));
 

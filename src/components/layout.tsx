@@ -146,8 +146,16 @@ export function Layout(props: { title: string; user: User | null; children?: any
 
         <main class="mx-auto max-w-2xl px-5 py-10 pb-28 sm:pb-10">{props.children}</main>
 
-        <footer class="mx-auto hidden max-w-2xl px-5 pb-12 pt-6 text-xs text-muted sm:block">
-          Learn words. Remember forever.
+        <footer class="mx-auto flex max-w-2xl flex-col gap-2 px-5 pt-6 pb-24 text-xs text-muted sm:flex-row sm:items-baseline sm:justify-between sm:pb-12">
+          <span>Learn words. Remember forever.</span>
+          <nav class="flex gap-4">
+            <a href="/privacy" class="hover:text-ink">
+              개인정보처리방침
+            </a>
+            <a href="/terms" class="hover:text-ink">
+              이용약관
+            </a>
+          </nav>
         </footer>
 
         {props.user ? (
