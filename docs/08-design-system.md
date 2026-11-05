@@ -30,7 +30,7 @@
 
 ## 글자 — 12px부터 2px 단위
 
-폰트는 `public/fonts/`에서 셀프호스팅합니다. Plus Jakarta Sans는 영문·단어, Pretendard Variable은 한글에 사용하며 외부 폰트 요청은 없습니다.
+폰트는 `public/fonts/`에서 셀프호스팅합니다. Plus Jakarta Sans는 영문·단어, Pretendard Variable은 한글에 사용하며 외부 폰트 요청은 없습니다. Pretendard는 dynamic subset(92개)으로 나눠 화면에 필요한 글자 범위만 로드합니다.
 
 | 토큰 | 크기 | 기본 줄 높이 | 용도 |
 |---|---|---|---|

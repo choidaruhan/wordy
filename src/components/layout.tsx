@@ -496,7 +496,7 @@ export function Layout(props: {
         type="font/woff2"
         crossorigin="anonymous"
       />
-      <link rel="stylesheet" href="/styles.css?v=9" />
+      <link rel="stylesheet" href="/styles.css?v=10" />
       <script src="/htmx.min.js" defer></script>
     </>
   );
