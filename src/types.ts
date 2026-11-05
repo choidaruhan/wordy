@@ -4,6 +4,7 @@ export type Bindings = {
   DEV_LOGIN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  LEGACY_REVIEW?: string;
 };
 
 export type User = {
@@ -11,8 +12,13 @@ export type User = {
   email: string;
   display_name: string | null;
   tz_offset_min: number;
+  timezone: string | null;
   daily_new: number;
   daily_review: number;
+  learning_mode: 'session' | 'daily';
+  confidence_mode: 'off' | 'sample' | 'always';
+  session_size: number;
+  new_per_session: number;
   new_card_mode: 'auto' | 'fixed';
   listening_enabled: boolean;
   voice_locale: 'en-US' | 'en-GB';
@@ -57,5 +63,6 @@ export type Stats = {
   total: number;
   decks: number;
   learned: number;
+  mastered: number;
   hard: number;
 };

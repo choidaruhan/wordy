@@ -8,6 +8,14 @@
  */
 
 export type WeakStatus = 'observing' | 'stale' | 'weak' | 'attention' | 'good';
+export type WeakConfidence = 'low' | 'medium' | 'high';
+
+export type WeakFactors = {
+  recentErrorRate: number;
+  lapses: number;
+  lowStability: number;
+  quizWrongs: number;
+};
 
 export type WeakInput = {
   recentN: number;
@@ -24,6 +32,9 @@ export type WeakResult = {
   score: number;
   status: WeakStatus;
   errorRate: number;
+  confidence: WeakConfidence;
+  sampleSize: number;
+  factors: WeakFactors;
 };
 
 const STALE_DAYS = 90;
@@ -31,31 +42,57 @@ const OBSERVE_MIN = 5;
 const RECENT_WINDOW = 20;
 const DAY_MS = 86_400_000;
 
+function confidenceFor(sampleSize: number): WeakConfidence {
+  if (sampleSize >= RECENT_WINDOW) return 'high';
+  if (sampleSize >= 10) return 'medium';
+  return 'low';
+}
+
 export function computeWeakness(input: WeakInput, now: Date): WeakResult {
   const totalN = Math.max(1, input.totalN);
   const recentN = Math.max(0, input.recentN);
   const recentErrorRate = recentN > 0 ? input.recentErrors / recentN : 0;
   const totalErrorRate = input.totalErrors / totalN;
+  const lapses = Math.max(0, input.lapses);
+  const stability = Math.max(0, input.stability);
+  const quizWrongs = Math.max(0, input.quizWrongs);
+
+  const factors: WeakFactors = {
+    recentErrorRate,
+    lapses,
+    lowStability: 1 - Math.min(1, stability / 21),
+    quizWrongs,
+  };
 
   if (input.lastReviewedAt) {
     const age = now.getTime() - Date.parse(input.lastReviewedAt);
     if (Number.isFinite(age) && age > STALE_DAYS * DAY_MS) {
-      return { score: 0, status: 'stale', errorRate: recentErrorRate };
+      return {
+        score: 0,
+        status: 'stale',
+        errorRate: recentErrorRate,
+        confidence: 'low',
+        sampleSize: recentN,
+        factors,
+      };
     }
   }
 
   if (recentN < OBSERVE_MIN) {
-    return { score: 0, status: 'observing', errorRate: recentErrorRate };
+    return {
+      score: 0,
+      status: 'observing',
+      errorRate: recentErrorRate,
+      confidence: 'low',
+      sampleSize: recentN,
+      factors,
+    };
   }
 
   const errorRate =
     recentN < RECENT_WINDOW
       ? 0.7 * recentErrorRate + 0.3 * totalErrorRate
       : recentErrorRate;
-
-  const lapses = Math.max(0, input.lapses);
-  const stability = Math.max(0, input.stability);
-  const quizWrongs = Math.max(0, input.quizWrongs);
 
   const baseScore =
     0.5 * errorRate +
@@ -68,5 +105,12 @@ export function computeWeakness(input: WeakInput, now: Date): WeakResult {
   const status: WeakStatus =
     score >= 0.6 ? 'weak' : score >= 0.35 ? 'attention' : 'good';
 
-  return { score, status, errorRate };
+  return {
+    score,
+    status,
+    errorRate,
+    confidence: confidenceFor(recentN),
+    sampleSize: recentN,
+    factors,
+  };
 }

@@ -20,6 +20,7 @@ export type QuizQuestion = {
 };
 
 export type WrongAnswer = {
+  wordId: string;
   term: string;
   meaning: string;
   chosen: string;
@@ -42,12 +43,14 @@ function shuffle<T>(items: T[]): T[] {
 
 /**
  * 새 퀴즈를 만든다. 단어가 4개 미만이면 null.
+ * wordIds를 주면 그 단어들만 출제한다. (틀린 것만 다시)
  * 진행 중이던 세션은 버린다.
  */
 export async function createQuiz(
   db: D1Database,
   userId: string,
-  count: number
+  count: number,
+  wordIds?: string[]
 ): Promise<string | null> {
   const { results } = await db
     .prepare(
@@ -62,13 +65,19 @@ export async function createQuiz(
   const distinctMeanings = new Set(results.map((r) => r.meaning));
   if (distinctMeanings.size < 4) return null;
 
+  const idSet =
+    wordIds && wordIds.length > 0 ? new Set(wordIds) : null;
+  const pool = idSet ? results.filter((row) => idSet.has(row.id)) : results;
+  if (pool.length === 0) return null;
+
   await db
     .prepare('DELETE FROM quiz_sessions WHERE user_id = ? AND completed_at IS NULL')
     .bind(userId)
     .run();
 
+  // 오답 보기는 전체 단어에서 뽑는다.
   const shuffled = shuffle(results);
-  const picked = shuffled.slice(0, Math.min(count, shuffled.length));
+  const picked = shuffle(pool).slice(0, Math.min(Math.max(1, count), pool.length));
 
   const sessionId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -130,6 +139,17 @@ export async function getActiveSession(
     )
     .bind(userId)
     .first<QuizSession>();
+}
+
+/** 진행 중인 퀴즈를 버린다. 응시 기록은 결과에 남지 않는다. */
+export async function abandonQuiz(
+  db: D1Database,
+  userId: string
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM quiz_sessions WHERE user_id = ? AND completed_at IS NULL')
+    .bind(userId)
+    .run();
 }
 
 export async function getNextQuestion(
@@ -229,18 +249,25 @@ export async function getResult(db: D1Database, sessionId: string): Promise<Quiz
 
   const { results } = await db
     .prepare(
-      `SELECT q.options, q.chosen_index, w.term, w.meaning
+      `SELECT q.word_id, q.options, q.chosen_index, w.term, w.meaning
          FROM quiz_questions q
          JOIN words w ON w.id = q.word_id
         WHERE q.session_id = ? AND q.is_correct = 0
         ORDER BY q.position`
     )
     .bind(sessionId)
-    .all<{ options: string; chosen_index: number | null; term: string; meaning: string }>();
+    .all<{
+      word_id: string;
+      options: string;
+      chosen_index: number | null;
+      term: string;
+      meaning: string;
+    }>();
 
   const wrong: WrongAnswer[] = results.map((r) => {
     const options = JSON.parse(r.options) as string[];
     return {
+      wordId: r.word_id,
       term: r.term,
       meaning: r.meaning,
       chosen: r.chosen_index !== null ? (options[r.chosen_index] ?? '') : '',

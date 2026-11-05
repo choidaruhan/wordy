@@ -1,4 +1,8 @@
-import { computeWeakness } from '../lib/weak';
+import {
+  computeWeakness,
+  type WeakConfidence,
+  type WeakFactors,
+} from '../lib/weak';
 import type { QueueCard } from './review';
 
 export type WeakWord = {
@@ -11,6 +15,9 @@ export type WeakWord = {
   direction: string;
   score: number;
   status: 'weak' | 'attention';
+  confidence: WeakConfidence;
+  sampleSize: number;
+  factors: WeakFactors;
   recentN: number;
   recentErrors: number;
   recentAccuracy: number;
@@ -143,6 +150,9 @@ export async function listWeakness(
       direction: row.card_type,
       score: result.score,
       status: result.status,
+      confidence: result.confidence,
+      sampleSize: result.sampleSize,
+      factors: result.factors,
       recentN: row.recent_n,
       recentErrors: row.recent_errors,
       recentAccuracy: row.recent_n > 0 ? 1 - row.recent_errors / row.recent_n : 0,
@@ -157,8 +167,15 @@ export async function listWeakness(
     }
   }
 
+  const confidenceRank = (confidence: WeakConfidence): number =>
+    confidence === 'high' ? 0 : confidence === 'medium' ? 1 : 2;
+
   const all = [...byWord.values()].sort(
-    (a, b) => b.score - a.score || a.term.localeCompare(b.term)
+    (a, b) =>
+      (a.status === 'weak' ? 0 : 1) - (b.status === 'weak' ? 0 : 1) ||
+      confidenceRank(a.confidence) - confidenceRank(b.confidence) ||
+      b.score - a.score ||
+      a.term.localeCompare(b.term)
   );
 
   return {

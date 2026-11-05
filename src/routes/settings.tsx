@@ -2,10 +2,13 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { Layout } from '../components/layout';
 import { parseFsrsParams } from '../lib/srs';
+import { isValidTimeZone } from '../lib/time';
 
 const settings = new Hono<Env>();
 
 const NEW_OPTIONS = [5, 10, 20];
+const SESSION_SIZES = [5, 10, 20];
+const NEW_PER_SESSION_OPTIONS = [0, 1, 2, 3, 5];
 
 settings.get('/settings', async (c) => {
   const user = c.get('user');
@@ -13,6 +16,14 @@ settings.get('/settings', async (c) => {
 
   const saved = c.req.query('saved') === '1';
   const fsrsStatus = c.req.query('fsrs');
+  const tzStatus = c.req.query('tz');
+  const dailyMode = user.learning_mode === 'daily';
+  const offsetSign = user.tz_offset_min >= 0 ? '+' : '-';
+  const offsetHours = String(
+    Math.floor(Math.abs(user.tz_offset_min) / 60)
+  ).padStart(2, '0');
+  const offsetMinutes = String(Math.abs(user.tz_offset_min) % 60).padStart(2, '0');
+  const offsetLabel = `UTC${offsetSign}${offsetHours}:${offsetMinutes}`;
 
   const reviewCountRow = await c.env.DB.prepare(
     'SELECT COUNT(*) AS n FROM reviews WHERE user_id = ?'
@@ -21,10 +32,15 @@ settings.get('/settings', async (c) => {
     .first<{ n: number }>();
   const reviewCount = reviewCountRow?.n ?? 0;
   const reviewGoal = 1000;
+  const fsrsLabel = user.fsrs_params
+    ? '개인 파라미터 적용 중'
+    : reviewCount >= reviewGoal
+      ? '최적화 준비됨'
+      : `${reviewGoal - reviewCount}건 더 필요`;
 
   return c.html(
     <Layout title="설정" user={user}>
-      <h1 class="text-2xl font-semibold">설정</h1>
+      <h1 class="text-2xl font-extrabold tracking-tight">설정</h1>
 
       {saved ? (
         <p class="mt-4 rounded-xl border border-accent-text/30 bg-accent-soft px-4 py-3 text-sm text-accent-text">
@@ -32,7 +48,13 @@ settings.get('/settings', async (c) => {
         </p>
       ) : null}
 
-      <form method="post" action="/settings" class="mt-8 space-y-8">
+      {tzStatus === 'invalid' ? (
+        <p class="mt-4 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
+          유효한 IANA 시간대가 아닙니다. 기존 시간대를 유지했습니다.
+        </p>
+      ) : null}
+
+      <form id="settings-form" method="post" action="/settings" class="mt-8 space-y-8">
         <div>
           <label for="display_name" class="text-sm font-medium">
             표시 이름
@@ -48,15 +70,151 @@ settings.get('/settings', async (c) => {
         </div>
 
         <fieldset>
-          <legend class="text-sm font-medium">하루 신규 단어</legend>
+          <legend class="text-sm font-medium">화면 테마</legend>
           <div class="mt-2 grid grid-cols-3 gap-2">
-            {NEW_OPTIONS.map((n) => (
+            {[
+              ['system', '시스템'],
+              ['light', '라이트'],
+              ['dark', '다크'],
+            ].map(([value, label]) => (
               <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
                 <input
                   type="radio"
-                  name="daily_new"
+                  name="theme"
+                  value={value}
+                  checked={value === 'system'}
+                  class="sr-only"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            이 기기에만 저장됩니다. 시스템은 OS의 라이트·다크 설정을 따릅니다.
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium">학습 방식</legend>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+              <input
+                type="radio"
+                name="learning_mode"
+                value="session"
+                checked={user.learning_mode !== 'daily'}
+                class="sr-only"
+              />
+              한 판씩
+            </label>
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+              <input
+                type="radio"
+                name="learning_mode"
+                value="daily"
+                checked={user.learning_mode === 'daily'}
+                class="sr-only"
+              />
+              하루 목표
+            </label>
+          </div>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            한 판씩은 하루 목표 없이 가볍게, 하루 목표는 오늘 할 양을 정해두고 학습합니다.
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium">확신도 질문</legend>
+          <div class="mt-2 grid grid-cols-3 gap-2">
+            {([
+              ['off', '묻지 않음'],
+              ['sample', '가끔 (1/5)'],
+              ['always', '항상'],
+            ] as const).map(([value, label]) => (
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-2 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                <input
+                  type="radio"
+                  name="confidence_mode"
+                  value={value}
+                  checked={user.confidence_mode === value}
+                  class="sr-only"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            정답을 맞힌 뒤 “얼마나 확신했나요?”를 선택적으로 기록합니다.
+            가끔은 5문제마다 1번 묻습니다.
+          </p>
+        </fieldset>
+
+        <div>
+          <label for="timezone" class="text-sm font-medium">
+            시간대
+          </label>
+          <input
+            id="timezone"
+            name="timezone"
+            list="timezone-options"
+            value={user.timezone ?? ''}
+            placeholder="Asia/Seoul"
+            autocomplete="off"
+            spellcheck={false}
+            class="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-3 text-sm"
+          />
+          <datalist id="timezone-options">
+            {[
+              'Asia/Seoul',
+              'UTC',
+              'Asia/Tokyo',
+              'Asia/Shanghai',
+              'Asia/Kolkata',
+              'America/New_York',
+              'America/Los_Angeles',
+              'Europe/London',
+              'Europe/Paris',
+              'Australia/Sydney',
+            ].map((zone) => (
+              <option value={zone}>{zone}</option>
+            ))}
+          </datalist>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            IANA 시간대입니다. 비워두면 UTC 오프셋({offsetLabel})을 사용합니다.
+          </p>
+        </div>
+
+        <fieldset>
+          <legend class="text-sm font-medium">한 판 문제 수</legend>
+          <div class="mt-2 grid grid-cols-3 gap-2">
+            {SESSION_SIZES.map((n) => (
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                <input
+                  type="radio"
+                  name="session_size"
                   value={String(n)}
-                  checked={user.daily_new === n}
+                  checked={user.session_size === n}
+                  class="sr-only"
+                />
+                {n}문제
+              </label>
+            ))}
+          </div>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            하루 목표가 아니라, 한 판에서 풀 문제 수입니다.
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium">한 판에 섞을 새 단어</legend>
+          <div class="mt-2 grid grid-cols-5 gap-2">
+            {NEW_PER_SESSION_OPTIONS.map((n) => (
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-2 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                <input
+                  type="radio"
+                  name="new_per_session"
+                  value={String(n)}
+                  checked={user.new_per_session === n}
                   class="sr-only"
                 />
                 {n}개
@@ -64,53 +222,83 @@ settings.get('/settings', async (c) => {
             ))}
           </div>
           <p class="mt-2 text-xs leading-5 text-muted">
-            복습이 밀릴 때는 줄이세요. 신규를 늘리면 복습 부담이 함께 늘어납니다.
+            복습이 남아 있을 때 한 판에 섞을 새 단어 수입니다. 복습이 없으면 새 단어로 채웁니다.
           </p>
         </fieldset>
 
-        <fieldset>
-          <legend class="text-sm font-medium">신규 단어 배분</legend>
-          <div class="mt-2 grid grid-cols-2 gap-2">
-            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
-              <input
-                type="radio"
-                name="new_card_mode"
-                value="auto"
-                checked={user.new_card_mode === 'auto'}
-                class="sr-only"
-              />
-              자동
-            </label>
-            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
-              <input
-                type="radio"
-                name="new_card_mode"
-                value="fixed"
-                checked={user.new_card_mode === 'fixed'}
-                class="sr-only"
-              />
-              고정
-            </label>
+        <div data-daily-settings hidden={!dailyMode} class="space-y-8">
+          <div class="border-t border-line pt-2">
+            <h2 class="text-base font-extrabold tracking-tight">하루 목표 설정</h2>
+            <p class="mt-1 text-xs leading-5 text-muted">
+              하루 목표 모드에서만 적용됩니다.
+            </p>
           </div>
-          <p class="mt-2 text-xs leading-5 text-muted">
-            자동은 복습이 밀리면 신규 단어를 줄입니다. 고정은 설정한 수를 유지합니다.
-          </p>
-        </fieldset>
 
-        <div>
-          <label for="daily_review" class="text-sm font-medium">
-            하루 복습 상한
-          </label>
-          <input
-            id="daily_review"
-            name="daily_review"
-            type="number"
-            min={10}
-            max={1000}
-            step={10}
-            value={String(user.daily_review)}
-            class="mt-2 w-32 rounded-xl border border-line bg-surface px-3 py-3 text-sm tabular-nums"
-          />
+          <fieldset>
+            <legend class="text-sm font-medium">하루 신규 단어</legend>
+            <div class="mt-2 grid grid-cols-3 gap-2">
+              {NEW_OPTIONS.map((n) => (
+                <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                  <input
+                    type="radio"
+                    name="daily_new"
+                    value={String(n)}
+                    checked={user.daily_new === n}
+                    class="sr-only"
+                  />
+                  {n}개
+                </label>
+              ))}
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              복습이 밀릴 때는 줄이세요. 신규를 늘리면 복습 부담이 함께 늘어납니다.
+            </p>
+          </fieldset>
+
+          <fieldset>
+            <legend class="text-sm font-medium">신규 단어 배분</legend>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                <input
+                  type="radio"
+                  name="new_card_mode"
+                  value="auto"
+                  checked={user.new_card_mode === 'auto'}
+                  class="sr-only"
+                />
+                자동
+              </label>
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+                <input
+                  type="radio"
+                  name="new_card_mode"
+                  value="fixed"
+                  checked={user.new_card_mode === 'fixed'}
+                  class="sr-only"
+                />
+                고정
+              </label>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-muted">
+              자동은 복습이 밀리면 신규 단어를 줄입니다. 고정은 설정한 수를 유지합니다.
+            </p>
+          </fieldset>
+
+          <div>
+            <label for="daily_review" class="text-sm font-medium">
+              하루 복습 상한
+            </label>
+            <input
+              id="daily_review"
+              name="daily_review"
+              type="number"
+              min={10}
+              max={1000}
+              step={10}
+              value={String(user.daily_review)}
+              class="mt-2 w-32 rounded-xl border border-line bg-surface px-3 py-3 text-sm tabular-nums"
+            />
+          </div>
         </div>
 
         <fieldset>
@@ -184,30 +372,71 @@ settings.get('/settings', async (c) => {
           </select>
         </fieldset>
 
+        <fieldset>
+          <legend class="text-sm font-medium">햅틱</legend>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+              <input
+                type="radio"
+                name="haptic"
+                value="on"
+                checked
+                class="sr-only"
+              />
+              사용
+            </label>
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
+              <input
+                type="radio"
+                name="haptic"
+                value="off"
+                class="sr-only"
+              />
+              사용 안 함
+            </label>
+          </div>
+          <p class="mt-2 text-xs leading-5 text-muted">
+            선택·평점·다음 버튼에서 짧게 진동합니다. 지원 기기에서만 동작하며 이
+            기기에만 저장됩니다.
+          </p>
+        </fieldset>
+
         <button
           type="submit"
-          class="w-full rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="w-full rounded-xl bg-accent shadow-brand px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           저장
         </button>
       </form>
 
-      <section class="mt-12 border-t border-line pt-6">
-        <h2 class="text-base font-semibold">FSRS 개인화</h2>
-        <p class="mt-1 text-sm leading-6 text-muted">
+      <div class="settings-save-bar fixed inset-x-0 z-10 border-t border-line bg-surface/95 px-5 py-3 backdrop-blur sm:hidden">
+        <div class="mx-auto max-w-2xl">
+          <button
+            type="submit"
+            form="settings-form"
+            class="w-full rounded-xl bg-accent px-5 py-3 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
+          >
+            저장
+          </button>
+        </div>
+      </div>
+
+      <details
+        open={fsrsStatus === 'saved' || fsrsStatus === 'invalid'}
+        class="mt-12 border-t border-line pt-6"
+      >
+        <summary class="cursor-pointer">
+          <span class="text-base font-extrabold tracking-tight">
+            고급 · FSRS 개인화
+          </span>
+          <span class="mt-1 block text-xs leading-5 text-muted">
+            리뷰 {reviewCount}건 · {fsrsLabel}
+          </span>
+        </summary>
+
+        <p class="mt-3 text-sm leading-6 text-muted">
           리뷰가 1,000건 이상 쌓이면 개인 기억 패턴에 맞춘 파라미터를 적용할 수 있습니다.
         </p>
-
-        <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-          <span>리뷰 {reviewCount}건</span>
-          {user.fsrs_params ? (
-            <span class="text-accent-text">개인 파라미터 적용 중</span>
-          ) : reviewCount >= reviewGoal ? (
-            <span class="text-accent-text">최적화 준비됨</span>
-          ) : (
-            <span class="text-muted">{reviewGoal - reviewCount}건 더 필요</span>
-          )}
-        </div>
 
         {fsrsStatus === 'saved' ? (
           <p class="mt-3 rounded-xl border border-accent-text/30 bg-accent-soft px-4 py-3 text-sm text-accent-text">
@@ -259,15 +488,57 @@ settings.get('/settings', async (c) => {
           </textarea>
           <button
             type="submit"
-            class="mt-2 rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+            class="mt-2 rounded-xl bg-accent shadow-brand px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
           >
             파라미터 적용
           </button>
         </form>
+      </details>
+
+      <section data-install-root class="mt-12 border-t border-line pt-6">
+        <h2 class="text-base font-extrabold tracking-tight">앱 설치</h2>
+        <p class="mt-1 text-sm leading-6 text-muted">
+          홈 화면에 추가하면 앱처럼 열리고, 오프라인에서도 앱 셸이 유지됩니다.
+        </p>
+
+        <button
+          type="button"
+          data-install-button
+          hidden
+          class="mt-4 rounded-xl bg-accent px-5 py-3 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
+        >
+          홈 화면에 추가
+        </button>
+
+        <p
+          data-install-ios
+          hidden
+          class="mt-4 rounded-xl bg-paper px-4 py-3 text-xs leading-5 text-muted"
+        >
+          iPhone·iPad는 Safari의 공유 버튼을 누른 뒤{' '}
+          <span class="font-semibold text-ink">홈 화면에 추가</span>를 선택하세요.
+        </p>
+
+        <p
+          data-install-done
+          hidden
+          class="mt-4 rounded-xl bg-accent-soft px-4 py-3 text-sm font-semibold text-accent-text"
+        >
+          이미 앱으로 설치되어 있습니다.
+        </p>
+
+        <p
+          data-install-unavailable
+          hidden
+          class="mt-4 text-xs leading-5 text-muted"
+        >
+          자동 설치 창이 열리지 않으면 브라우저 메뉴에서 “앱 설치” 또는 “홈
+          화면에 추가”를 선택하세요.
+        </p>
       </section>
 
       <section class="mt-12 border-t border-line pt-6">
-        <h2 class="text-base font-semibold">계정</h2>
+        <h2 class="text-base font-extrabold tracking-tight">계정</h2>
         <p class="mt-1 text-sm text-muted">{user.email}</p>
         <form method="post" action="/logout" class="mt-3">
           <button type="submit" class="text-sm text-muted hover:text-danger">
@@ -275,6 +546,8 @@ settings.get('/settings', async (c) => {
           </button>
         </form>
       </section>
+
+      <div class="h-16 sm:hidden" aria-hidden="true"></div>
     </Layout>
   );
 });
@@ -290,7 +563,42 @@ settings.post('/settings', async (c) => {
   const requestedNew = Number(body['daily_new']);
   const dailyNew = NEW_OPTIONS.includes(requestedNew) ? requestedNew : user.daily_new;
 
-  const newCardMode = body['new_card_mode'] === 'fixed' ? 'fixed' : 'auto';
+  const learningMode = body['learning_mode'] === 'daily' ? 'daily' : 'session';
+
+  const requestedConfidence = body['confidence_mode'];
+  const confidenceMode =
+    requestedConfidence === 'off' ||
+    requestedConfidence === 'sample' ||
+    requestedConfidence === 'always'
+      ? requestedConfidence
+      : user.confidence_mode;
+
+  const requestedTimezone = String(body['timezone'] ?? '').trim();
+  const timezoneInvalid =
+    requestedTimezone !== '' && !isValidTimeZone(requestedTimezone);
+  const timezone =
+    requestedTimezone === ''
+      ? null
+      : timezoneInvalid
+        ? user.timezone
+        : requestedTimezone;
+
+  const newCardMode =
+    body['new_card_mode'] === 'fixed'
+      ? 'fixed'
+      : body['new_card_mode'] === 'auto'
+        ? 'auto'
+        : user.new_card_mode;
+
+  const requestedSessionSize = Number(body['session_size']);
+  const sessionSize = SESSION_SIZES.includes(requestedSessionSize)
+    ? requestedSessionSize
+    : user.session_size;
+
+  const requestedNewPerSession = Number(body['new_per_session']);
+  const newPerSession = NEW_PER_SESSION_OPTIONS.includes(requestedNewPerSession)
+    ? requestedNewPerSession
+    : user.new_per_session;
 
   const listeningEnabled = body['listening_enabled'] === '1' ? 1 : 0;
   const voiceLocale = body['voice_locale'] === 'en-GB' ? 'en-GB' : 'en-US';
@@ -306,14 +614,20 @@ settings.post('/settings', async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE users
-        SET display_name = ?, daily_new = ?, daily_review = ?, new_card_mode = ?,
-            listening_enabled = ?, voice_locale = ?, voice_rate = ?
+        SET display_name = ?, daily_new = ?, daily_review = ?, learning_mode = ?,
+            confidence_mode = ?, timezone = ?, session_size = ?, new_per_session = ?,
+            new_card_mode = ?, listening_enabled = ?, voice_locale = ?, voice_rate = ?
       WHERE id = ?`
   )
     .bind(
       displayName,
       dailyNew,
       dailyReview,
+      learningMode,
+      confidenceMode,
+      timezone,
+      sessionSize,
+      newPerSession,
       newCardMode,
       listeningEnabled,
       voiceLocale,
@@ -322,7 +636,7 @@ settings.post('/settings', async (c) => {
     )
     .run();
 
-  return c.redirect('/settings?saved=1');
+  return c.redirect(timezoneInvalid ? '/settings?tz=invalid' : '/settings?saved=1');
 });
 
 /** FSRS 옵티마이저에 넣을 리뷰 로그를 JSON으로 내보낸다. */

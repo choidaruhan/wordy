@@ -55,7 +55,7 @@ hard.get('/hard', async (c) => {
   return c.html(
     <Layout title="취약 단어" user={user}>
       <div class="flex items-baseline justify-between">
-        <h1 class="text-2xl font-semibold">취약 단어</h1>
+        <h1 class="text-2xl font-extrabold tracking-tight">취약 단어</h1>
         <span class="text-sm text-muted">{report.all.length}개</span>
       </div>
       <p class="mt-2 max-w-xl text-sm leading-6 text-muted">
@@ -114,12 +114,15 @@ function WeakList(props: {
       ) : (
         <>
           {props.weakDue > 0 ? (
-            <a
-              href="/review?mode=weak"
-              class="mt-5 inline-block rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
-            >
-              취약 단어 연습 ({props.weakDue}장)
-            </a>
+            <form method="post" action="/play/start" class="mt-5">
+              <input type="hidden" name="mode" value="weak" />
+              <button
+                type="submit"
+                class="inline-block rounded-xl bg-accent shadow-brand px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+              >
+                취약 단어 연습 ({props.weakDue}장)
+              </button>
+            </form>
           ) : (
             <p class="mt-5 text-sm text-muted">
               오늘 기한이 도래한 취약 단어가 없습니다. 내일 다시 확인하세요.
@@ -141,7 +144,7 @@ function WeakList(props: {
 
       {props.stale.length > 0 ? (
         <section class="mt-10 border-t border-line pt-6">
-          <h2 class="text-base font-semibold">재확인 필요</h2>
+          <h2 class="text-base font-extrabold tracking-tight">재확인 필요</h2>
           <p class="mt-1 text-sm leading-6 text-muted">
             90일 이상 복습하지 않아 취약 판정에서 제외한 단어입니다. 복습이 다시 시작되면
             자동으로 평가합니다.
@@ -175,13 +178,22 @@ function WeakItem(props: { word: WeakWord; now: Date }) {
           <span class="font-word text-lg">{w.term}</span>
           <span class="ml-2 text-sm text-muted">{w.meaning}</span>
         </div>
-        <span
-          class={`shrink-0 rounded-full px-2 py-1 text-xs ${
-            w.status === 'weak' ? 'bg-danger-soft text-danger' : 'bg-mark-soft text-ink'
-          }`}
-        >
-          {w.status === 'weak' ? '취약' : '주의'}
-        </span>
+        <div class="flex shrink-0 items-center gap-1">
+          <span
+            class={`rounded-full px-2 py-1 text-xs ${
+              w.status === 'weak' ? 'bg-danger-soft text-danger' : 'bg-mark-soft text-ink'
+            }`}
+          >
+            {w.status === 'weak' ? '취약' : '주의'}
+          </span>
+          <span class="rounded-full bg-line px-2 py-1 text-xs text-muted">
+            {w.confidence === 'high'
+              ? '신뢰도 높음'
+              : w.confidence === 'medium'
+                ? '신뢰도 보통'
+                : `데이터 부족 ${w.sampleSize}/20`}
+          </span>
+        </div>
       </div>
 
       <p class="mt-1 text-sm leading-6 text-muted">

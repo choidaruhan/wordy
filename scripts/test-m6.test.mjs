@@ -16,9 +16,11 @@ buildSync({
     'src/db/weak.ts',
     'src/db/plan.ts',
     'src/db/queries.ts',
+    'src/db/play.ts',
     'src/lib/csv.ts',
     'src/lib/word-meta.ts',
     'src/lib/srs.ts',
+    'src/lib/rating-config.ts',
   ],
   outdir: bundleDir,
   bundle: true,
@@ -27,9 +29,14 @@ buildSync({
   logLevel: 'silent',
 });
 
-const { saveReview, getProgress, ensureUnlocks, getMeaningChoices } = await import(
-  pathToFileURL(join(bundleDir, 'db/review.js')).href
-);
+const {
+  saveReview,
+  getProgress,
+  ensureUnlocks,
+  getMeaningChoices,
+  getReviewIdByKey,
+  updateReviewConfidence,
+} = await import(pathToFileURL(join(bundleDir, 'db/review.js')).href);
 const { learnedCount, dailyStats, rangeSummary } = await import(
   pathToFileURL(join(bundleDir, 'db/stats.js')).href
 );
@@ -48,6 +55,18 @@ const {
   countDueByType,
   servedByTypeSince,
 } = await import(pathToFileURL(join(bundleDir, 'db/plan.js')).href);
+const {
+  createPlaySession,
+  getPlaySession,
+  getPlaySessionItem,
+  getPlaySessionWrapupStats,
+  answerWrapupItem,
+  serveNextPlayCard,
+  refreshPlaySessionStatus,
+  abandonPlaySession,
+  completePlaySession,
+  getPlayPoolCounts,
+} = await import(pathToFileURL(join(bundleDir, 'db/play.js')).href);
 const { importSeed, listWords, addWord } = await import(
   pathToFileURL(join(bundleDir, 'db/queries.js')).href
 );
@@ -63,6 +82,11 @@ const {
   previewIntervals,
   FSRS_PARAM_LENGTH,
 } = await import(pathToFileURL(join(bundleDir, 'lib/srs.js')).href);
+const {
+  computeGradingReliability,
+  RATING_MODEL_VERSION,
+  timingFor,
+} = await import(pathToFileURL(join(bundleDir, 'lib/rating-config.js')).href);
 
 test.after(() => {
   rmSync(bundleDir, { recursive: true, force: true });
@@ -78,6 +102,18 @@ const MIGRATIONS = [
   '0007_words_metadata.sql',
   '0008_user_preferences.sql',
   '0009_fsrs_params.sql',
+  '0010_play_sessions.sql',
+  '0011_play_session_deck.sql',
+  '0012_drop_play_score.sql',
+  '0013_learning_mode.sql',
+  '0014_play_session_state.sql',
+  '0015_play_session_items.sql',
+  '0016_play_session_triggers.sql',
+  '0017_review_rating_signals.sql',
+  '0018_users_timezone.sql',
+  '0019_confidence_mode.sql',
+  '0020_rate_limits.sql',
+  '0021_word_mastery.sql',
 ];
 
 function migrationSql(name) {
@@ -134,6 +170,8 @@ function testUser(overrides = {}) {
     tz_offset_min: 540,
     daily_new: 10,
     daily_review: 200,
+    session_size: 5,
+    new_per_session: 2,
     new_card_mode: 'auto',
     ...overrides,
   };
@@ -389,6 +427,604 @@ test('getMeaningChoices: 정답 뜻과 다른 단어 뜻으로 4지선다 보기
     await getMeaningChoices(singleDb, 'u1', 'w1', '포기하다'),
     []
   );
+});
+
+test('play: 새 단어로 세션을 만들고 같은 카드를 반복하지 않는다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  for (let i = 1; i <= 6; i++) {
+    seedWord(db, { id: `w${i}`, term: `word${i}`, meaning: `뜻${i}` });
+    seedCard(db, { id: `c${i}`, wordId: `w${i}` });
+  }
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(database, 'u1', 'quick', {
+    targetSize: 5,
+    reviewTarget: 0,
+    newTarget: 5,
+    weakTarget: 0,
+    policy: 'session',
+    reason: 'session',
+  }, now);
+  const first = await serveNextPlayCard(database, 'u1', session, now);
+  assert.ok(first);
+
+  const saved = await saveReview(
+    database,
+    'u1',
+    getCard(db, first.card.id),
+    3,
+    now,
+    '2026-11-04',
+    { sessionId: session.id, reviewKey: first.item.id }
+  );
+  assert.ok(saved);
+
+  const second = await serveNextPlayCard(database, 'u1', session, now);
+  assert.ok(second);
+  assert.notEqual(second.card.id, first.card.id);
+
+  const row = await getPlaySession(database, 'u1', session.id);
+  assert.equal(row.answered, 1);
+  assert.equal(row.correct, 1);
+
+  const review = db
+    .prepare('SELECT session_id, review_key FROM reviews WHERE card_id = ?')
+    .get(first.card.id);
+  assert.equal(review.session_id, session.id);
+  assert.equal(review.review_key, first.item.id);
+});
+
+test('play: 커스텀 모드는 지정한 단어장의 최신 새 단어부터 낸다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db, 'd1');
+  seedDeck(db, 'd2');
+
+  for (let i = 1; i <= 3; i++) {
+    seedWord(db, { id: `w${i}`, deckId: 'd1', term: `word${i}`, meaning: `뜻${i}` });
+    seedCard(db, { id: `c${i}`, wordId: `w${i}` });
+    db.prepare('UPDATE cards SET created_at = ? WHERE id = ?').run(
+      `2026-11-0${i}T00:00:00.000Z`,
+      `c${i}`
+    );
+  }
+  seedWord(db, { id: 'w-other', deckId: 'd2', term: 'other', meaning: '다른' });
+  seedCard(db, { id: 'c-other', wordId: 'w-other' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(database, 'u1', 'custom', {
+    targetSize: 5,
+    reviewTarget: 0,
+    newTarget: 5,
+    weakTarget: 0,
+    policy: 'session',
+    reason: 'session',
+  }, now, 'd1');
+  const first = await serveNextPlayCard(database, 'u1', session, now);
+  assert.equal(first.card.id, 'c3');
+  assert.notEqual(first.card.id, 'c-other');
+});
+
+test('play: 복습 카드가 있으면 새 단어보다 먼저 낸다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+
+  seedWord(db, { id: 'w-due', term: 'due', meaning: '복습' });
+  seedCard(db, {
+    id: 'c-due',
+    wordId: 'w-due',
+    state: 'review',
+    dueAt: '2026-11-04T11:00:00.000Z',
+    reps: 5,
+    scheduledDays: 10,
+    lastReviewedAt: '2026-11-01T00:00:00.000Z',
+  });
+  seedWord(db, { id: 'w-new', term: 'new', meaning: '신규' });
+  seedCard(db, { id: 'c-new', wordId: 'w-new' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(database, 'u1', 'quick', {
+    targetSize: 2,
+    reviewTarget: 1,
+    newTarget: 1,
+    weakTarget: 0,
+    policy: 'session',
+    reason: 'session',
+  }, now);
+  const card = await serveNextPlayCard(database, 'u1', session, now);
+  assert.equal(card.card.id, 'c-due');
+
+  const counts = await getPlayPoolCounts(database, 'u1', now.toISOString());
+  assert.equal(counts.due, 1);
+  assert.equal(counts.newCards, 1);
+
+  await completePlaySession(database, 'u1', session.id, now);
+  const done = await getPlaySession(database, 'u1', session.id);
+  assert.equal(done.completed_at, now.toISOString());
+});
+
+test('play: 승급된 new 카드(recall/cloze/listening)도 복습 대기로 낸다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+
+  seedWord(db, { id: 'w-prom', term: 'promoted', meaning: '승급' });
+  seedCard(db, {
+    id: 'c-prom',
+    wordId: 'w-prom',
+    type: 'recall',
+    state: 'new',
+    dueAt: '2026-11-04T11:00:00.000Z',
+  });
+
+  seedWord(db, { id: 'w-new', term: 'new', meaning: '신규' });
+  seedCard(db, { id: 'c-new', wordId: 'w-new' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const counts = await getPlayPoolCounts(database, 'u1', now.toISOString());
+  assert.equal(counts.due, 1);
+  assert.equal(counts.dueByType['recall'], 1);
+  assert.equal(counts.newCards, 1);
+
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 1,
+      reviewTarget: 1,
+      newTarget: 0,
+      weakTarget: 0,
+      policy: 'session',
+      reason: 'session',
+    },
+    now
+  );
+  const card = await serveNextPlayCard(database, 'u1', session, now);
+  assert.equal(card.card.id, 'c-prom');
+});
+
+test('play: 세션에 정책 스냅샷과 상태를 저장한다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 4,
+      reviewTarget: 2,
+      newTarget: 2,
+      weakTarget: 0,
+      policy: 'daily',
+      reason: 'light_backlog',
+    },
+    now
+  );
+
+  const row = await getPlaySession(database, 'u1', session.id);
+  assert.equal(row.status, 'active');
+  assert.equal(row.target_size, 4);
+  assert.equal(row.review_target, 2);
+  assert.equal(row.new_target, 2);
+  assert.equal(row.weak_target, 0);
+  assert.equal(row.policy, 'daily');
+  assert.equal(row.policy_reason, 'light_backlog');
+  assert.match(row.last_activity_at, /Z$/);
+  assert.match(row.expires_at, /Z$/);
+
+  await completePlaySession(database, 'u1', session.id, now);
+  const completed = await getPlaySession(database, 'u1', session.id);
+  assert.equal(completed.status, 'completed');
+  assert.match(completed.completed_at, /Z$/);
+});
+
+test('play: 새로고침하면 같은 item 과 served_at 을 재사용한다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  seedWord(db, { id: 'w1', term: 'one', meaning: '하나' });
+  seedCard(db, { id: 'c1', wordId: 'w1' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 1,
+      reviewTarget: 0,
+      newTarget: 1,
+      weakTarget: 0,
+      policy: 'session',
+      reason: 'session',
+    },
+    now
+  );
+
+  const first = await serveNextPlayCard(database, 'u1', session, now);
+  const again = await serveNextPlayCard(database, 'u1', session, now);
+
+  assert.equal(again.item.id, first.item.id);
+  assert.equal(again.item.served_at, first.item.served_at);
+  assert.equal(again.card.id, first.card.id);
+});
+
+test('play: item 답안은 한 번만 저장되고, 출제되지 않은 리뷰는 막는다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  seedWord(db, { id: 'w1', term: 'one', meaning: '하나' });
+  seedCard(db, { id: 'c1', wordId: 'w1' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 1,
+      reviewTarget: 0,
+      newTarget: 1,
+      weakTarget: 0,
+      policy: 'session',
+      reason: 'session',
+    },
+    now
+  );
+
+  const served = await serveNextPlayCard(database, 'u1', session, now);
+  const first = await saveReview(
+    database,
+    'u1',
+    getCard(db, served.card.id),
+    3,
+    now,
+    '2026-11-04',
+    { sessionId: session.id, reviewKey: served.item.id }
+  );
+  assert.ok(first);
+
+  const item = await getPlaySessionItem(
+    database,
+    'u1',
+    session.id,
+    served.item.id
+  );
+  assert.ok(item.answered_at);
+  assert.ok(item.review_id);
+
+  // 같은 item 재전송
+  const duplicate = await saveReview(
+    database,
+    'u1',
+    getCard(db, served.card.id),
+    3,
+    new Date(now.getTime() + 60_000),
+    '2026-11-04',
+    { sessionId: session.id, reviewKey: served.item.id }
+  );
+  assert.equal(duplicate, null);
+
+  // 출제되지 않은(미답변 item 이 없는) 세션 리뷰는 트리거가 막는다
+  const unserved = await saveReview(
+    database,
+    'u1',
+    getCard(db, served.card.id),
+    3,
+    new Date(now.getTime() + 120_000),
+    '2026-11-04',
+    { sessionId: session.id }
+  );
+  assert.equal(unserved, null);
+
+  assert.equal(
+    count(db, 'SELECT COUNT(*) AS n FROM reviews WHERE session_id = ?', session.id),
+    1
+  );
+
+  const row = await getPlaySession(database, 'u1', session.id);
+  assert.equal(row.answered, 1);
+  assert.equal(row.correct, 1);
+});
+
+test('play: 만료/무활동/중단 세션 상태를 반영한다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const plan = {
+    targetSize: 1,
+    reviewTarget: 0,
+    newTarget: 1,
+    weakTarget: 0,
+    policy: 'session',
+    reason: 'session',
+  };
+
+  const expired = await createPlaySession(database, 'u1', 'quick', plan, now);
+  db.prepare(
+    'UPDATE play_sessions SET expires_at = ?, last_activity_at = ? WHERE id = ?'
+  ).run('2026-11-04T13:00:00.000Z', now.toISOString(), expired.id);
+  const expiredAfter = await refreshPlaySessionStatus(
+    database,
+    'u1',
+    expired.id,
+    new Date('2026-11-04T14:00:00.000Z')
+  );
+  assert.equal(expiredAfter.status, 'expired');
+
+  const abandoned = await createPlaySession(database, 'u1', 'quick', plan, now);
+  db.prepare('UPDATE play_sessions SET last_activity_at = ? WHERE id = ?').run(
+    '2026-11-04T05:00:00.000Z',
+    abandoned.id
+  );
+  const abandonedAfter = await refreshPlaySessionStatus(database, 'u1', abandoned.id, now);
+  assert.equal(abandonedAfter.status, 'abandoned');
+
+  const manually = await createPlaySession(database, 'u1', 'quick', plan, now);
+  await abandonPlaySession(database, 'u1', manually.id, now);
+  const manuallyAfter = await refreshPlaySessionStatus(database, 'u1', manually.id, now);
+  assert.equal(manuallyAfter.status, 'abandoned');
+});
+
+test('play: 목표 달성 후 오답을 최대 2개 재노출하고 리뷰를 만들지 않는다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  for (let i = 1; i <= 3; i++) {
+    seedWord(db, { id: `w${i}`, term: `word${i}`, meaning: `뜻${i}` });
+    seedCard(db, { id: `c${i}`, wordId: `w${i}` });
+  }
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 3,
+      reviewTarget: 0,
+      newTarget: 3,
+      weakTarget: 0,
+      policy: 'session',
+      reason: 'session',
+    },
+    now
+  );
+
+  for (let i = 0; i < 3; i++) {
+    const served = await serveNextPlayCard(database, 'u1', session, now);
+    assert.ok(served);
+    assert.equal(served.item.kind, 'prompt');
+    const saved = await saveReview(
+      database,
+      'u1',
+      getCard(db, served.card.id),
+      1,
+      now,
+      '2026-11-04',
+      { sessionId: session.id, reviewKey: served.item.id }
+    );
+    assert.ok(saved);
+  }
+
+  const row = await getPlaySession(database, 'u1', session.id);
+  assert.equal(row.answered, 3);
+
+  // 목표를 채웠지만 오답 후보가 있으므로 아직 active다.
+  const refreshed = await refreshPlaySessionStatus(database, 'u1', session.id, now);
+  assert.equal(refreshed.status, 'active');
+
+  const firstWrap = await serveNextPlayCard(database, 'u1', refreshed, now);
+  assert.ok(firstWrap);
+  assert.equal(firstWrap.item.kind, 'wrapup');
+  assert.equal(
+    count(db, "SELECT COUNT(*) AS n FROM play_session_items WHERE session_id = ? AND kind = 'wrapup'", session.id),
+    2
+  );
+
+  assert.equal(
+    await answerWrapupItem(
+      database,
+      'u1',
+      session.id,
+      firstWrap.item.id,
+      true,
+      now
+    ),
+    true
+  );
+
+  const secondWrap = await serveNextPlayCard(database, 'u1', refreshed, now);
+  assert.ok(secondWrap);
+  assert.equal(secondWrap.item.kind, 'wrapup');
+  assert.equal(
+    await answerWrapupItem(
+      database,
+      'u1',
+      session.id,
+      secondWrap.item.id,
+      false,
+      now
+    ),
+    true
+  );
+
+  const none = await serveNextPlayCard(database, 'u1', refreshed, now);
+  assert.equal(none, null);
+
+  // 오답 마무리는 reviews를 만들지 않는다.
+  assert.equal(
+    count(db, 'SELECT COUNT(*) AS n FROM reviews WHERE session_id = ?', session.id),
+    3
+  );
+
+  const stats = await getPlaySessionWrapupStats(database, 'u1', session.id);
+  assert.deepEqual(stats, { total: 2, correct: 1 });
+
+  const wrapupItem = await getPlaySessionItem(
+    database,
+    'u1',
+    session.id,
+    firstWrap.item.id
+  );
+  assert.ok(wrapupItem.answered_at);
+  assert.equal(wrapupItem.review_id, null);
+  assert.equal(wrapupItem.correct, 1);
+});
+
+test('confidence: 저장된 리뷰의 확신도와 채점 신뢰도를 갱신한다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  seedWord(db, { id: 'w1', term: 'confidence', meaning: '확신' });
+  seedCard(db, { id: 'c1', wordId: 'w1' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const session = await createPlaySession(
+    database,
+    'u1',
+    'quick',
+    {
+      targetSize: 1,
+      reviewTarget: 0,
+      newTarget: 1,
+      weakTarget: 0,
+      policy: 'session',
+      reason: 'session',
+    },
+    now
+  );
+  const served = await serveNextPlayCard(database, 'u1', session, now);
+  const saved = await saveReview(
+    database,
+    'u1',
+    getCard(db, served.card.id),
+    3,
+    now,
+    '2026-11-04',
+    { sessionId: session.id, reviewKey: served.item.id }
+  );
+  assert.ok(saved);
+
+  const reviewId = await getReviewIdByKey(database, 'u1', served.item.id);
+  assert.ok(reviewId);
+  assert.equal(await getReviewIdByKey(database, 'u2', served.item.id), null);
+
+  assert.equal(
+    await updateReviewConfidence(database, 'u2', session.id, reviewId, 0),
+    false
+  );
+  assert.equal(
+    await updateReviewConfidence(database, 'u1', 'other-session', reviewId, 0),
+    false
+  );
+  assert.equal(
+    await updateReviewConfidence(database, 'u1', session.id, reviewId, 2),
+    true
+  );
+
+  const review = db
+    .prepare('SELECT confidence, grading_reliability FROM reviews WHERE id = ?')
+    .get(reviewId);
+  assert.equal(review.confidence, 2);
+  assert.ok(review.grading_reliability > 0);
+});
+
+test('saveReview: 평점 신뢰도 신호를 저장한다', async () => {  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  seedWord(db, { id: 'w1', term: 'signal', meaning: '신호' });
+  seedCard(db, { id: 'c1', wordId: 'w1' });
+
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const saved = await saveReview(
+    database,
+    'u1',
+    getCard(db, 'c1'),
+    3,
+    now,
+    '2026-11-04',
+    {
+      responseMs: 4_200,
+      promptStartedAt: '2026-11-04T11:59:55.000Z',
+      firstInputAt: '2026-11-04T11:59:57.000Z',
+      confidence: 2,
+      gradingReliability: 0.91,
+      ratingModelVersion: 1,
+    }
+  );
+  assert.ok(saved);
+
+  const row = db
+    .prepare(
+      `SELECT prompt_started_at, first_input_at, confidence,
+              rating_model_version, grading_reliability
+         FROM reviews WHERE card_id = ?`
+    )
+    .get('c1');
+
+  assert.equal(row.prompt_started_at, '2026-11-04T11:59:55.000Z');
+  assert.equal(row.first_input_at, '2026-11-04T11:59:57.000Z');
+  assert.equal(row.confidence, 2);
+  assert.equal(row.rating_model_version, 1);
+  assert.equal(row.grading_reliability, 0.91);
+});
+
+test('rating-config: 카드 유형별 채점 신뢰도를 계산한다', () => {
+  assert.equal(RATING_MODEL_VERSION, 1);
+  assert.equal(timingFor('recall').targetMs, 18_000);
+
+  const fast = computeGradingReliability({
+    correct: true,
+    responseMs: 1_000,
+    cardType: 'recall',
+    confidence: 2,
+  });
+  assert.ok(fast > 0.9);
+
+  const slow = computeGradingReliability({
+    correct: true,
+    responseMs: 40_000,
+    cardType: 'recall',
+    confidence: null,
+  });
+  assert.ok(slow < fast);
+
+  const wrong = computeGradingReliability({
+    correct: false,
+    responseMs: 1_000,
+    cardType: 'recall',
+    confidence: 2,
+  });
+  assert.ok(wrong < 0.6);
+
+  const typo = computeGradingReliability({
+    correct: true,
+    typo: true,
+    responseMs: 1_000,
+    cardType: 'recall',
+    confidence: 2,
+  });
+  assert.ok(typo < fast);
+  assert.ok(typo > 0.8);
 });
 
 test('saveReview: 카드 상태와 리뷰 로그를 원자적으로 저장하고 중복을 막는다', async () => {
@@ -824,6 +1460,10 @@ test('weak: 취약/주의/관찰/격리를 분류하고 due 연습 대상을 찾
   const max = report.all.find((w) => w.wordId === 'w_max');
   assert.equal(max.direction, 'recognition');
   assert.equal(max.status, 'weak');
+
+  const weakWord = report.all.find((w) => w.wordId === 'w_weak');
+  assert.equal(weakWord.confidence, 'high');
+  assert.equal(weakWord.sampleSize, 20);
 
   const quiz = report.all.find((w) => w.wordId === 'w_quiz');
   assert.equal(quiz.quizWrongs, 5);

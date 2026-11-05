@@ -15,7 +15,7 @@ const SITE = {
 legal.get('/privacy', (c) => {
   return c.html(
     <Layout title="개인정보처리방침" user={c.get('user')}>
-      <h1 class="text-2xl font-semibold">개인정보처리방침</h1>
+      <h1 class="text-2xl font-extrabold tracking-tight">개인정보처리방침</h1>
       <p class="mt-2 text-sm text-muted">
         {SITE.name} · 시행일 {SITE.effectiveDate}
       </p>
@@ -123,7 +123,7 @@ legal.get('/privacy', (c) => {
 legal.get('/terms', (c) => {
   return c.html(
     <Layout title="이용약관" user={c.get('user')}>
-      <h1 class="text-2xl font-semibold">이용약관</h1>
+      <h1 class="text-2xl font-extrabold tracking-tight">이용약관</h1>
       <p class="mt-2 text-sm text-muted">
         {SITE.name} · 시행일 {SITE.effectiveDate}
       </p>
@@ -210,7 +210,7 @@ legal.get('/terms', (c) => {
 function Section(props: { title: string; children?: any }) {
   return (
     <section class="mt-8">
-      <h2 class="text-base font-semibold">{props.title}</h2>
+      <h2 class="text-base font-extrabold tracking-tight">{props.title}</h2>
       <div class="mt-2 text-base leading-7">{props.children}</div>
     </section>
   );

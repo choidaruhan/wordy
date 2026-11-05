@@ -287,7 +287,7 @@ async function getPlanProgress(
   row: DailyPlanRow,
   now: Date
 ): Promise<PlanProgress> {
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
   const nowIso = now.toISOString();
 
   const [done, newDone, promotedDone, dynamic] = await Promise.all([
@@ -376,7 +376,7 @@ export async function getTodayPlan(
   now: Date,
   create: boolean
 ): Promise<TodayPlanResult> {
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
   let row = await getDailyPlan(db, user.id, today);
 
   if (!row && create) {

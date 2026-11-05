@@ -22,6 +22,8 @@ test('computeWeakness: 최근 5회 미만은 observing', () => {
   const result = computeWeakness(input({ recentN: 4, recentErrors: 3 }), now);
   assert.equal(result.status, 'observing');
   assert.equal(result.score, 0);
+  assert.equal(result.confidence, 'low');
+  assert.equal(result.sampleSize, 4);
 });
 
 test('computeWeakness: 90일 이상 지난 카드는 stale', () => {
@@ -36,6 +38,8 @@ test('computeWeakness: 20회 중 8회 오답 + 퀴즈 1회 → attention', () =>
   const result = computeWeakness(input(), now);
   assert.ok(result.score > 0.45 && result.score < 0.5);
   assert.equal(result.status, 'attention');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.sampleSize, 20);
 });
 
 test('computeWeakness: 최근 20회 중 14회 오답 → weak', () => {
@@ -45,6 +49,7 @@ test('computeWeakness: 최근 20회 중 14회 오답 → weak', () => {
   );
   assert.ok(result.score >= 0.6);
   assert.equal(result.status, 'weak');
+  assert.equal(result.confidence, 'high');
 });
 
 test('computeWeakness: 최근 20회 중 1회 오답, 안정된 카드 → good', () => {
@@ -73,6 +78,34 @@ test('computeWeakness: 5~19회는 최근/누적을 섞는다', () => {
   // 0.7 * 0.6 + 0.3 * 0.5 = 0.57
   assert.ok(Math.abs(result.errorRate - 0.57) < 1e-9);
   assert.equal(result.status, 'attention');
+  assert.equal(result.confidence, 'low');
+  assert.equal(result.sampleSize, 5);
+});
+
+test('computeWeakness: 표본 수에 따라 low/medium/high 신뢰도를 구분한다', () => {
+  const low = computeWeakness(input({ recentN: 4, recentErrors: 1 }), now);
+  assert.equal(low.confidence, 'low');
+
+  const medium = computeWeakness(
+    input({ recentN: 10, recentErrors: 3, totalN: 10, totalErrors: 3 }),
+    now
+  );
+  assert.equal(medium.confidence, 'medium');
+  assert.equal(medium.sampleSize, 10);
+
+  const high = computeWeakness(input({ recentN: 20 }), now);
+  assert.equal(high.confidence, 'high');
+});
+
+test('computeWeakness: 기여 요인을 함께 돌려준다', () => {
+  const result = computeWeakness(
+    input({ recentErrors: 6, lapses: 4, stability: 3, quizWrongs: 2 }),
+    now
+  );
+  assert.equal(result.factors.recentErrorRate, 0.3);
+  assert.equal(result.factors.lapses, 4);
+  assert.ok(result.factors.lowStability > 0.8);
+  assert.equal(result.factors.quizWrongs, 2);
 });
 
 test('computeWeakness: 퀴즈 보너스는 0.15로 제한', () => {

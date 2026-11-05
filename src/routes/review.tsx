@@ -56,6 +56,12 @@ review.get('/review', async (c) => {
   const user = c.get('user');
   if (!user) return c.redirect('/login');
 
+  if (c.env.LEGACY_REVIEW !== '1') {
+    return c.redirect(
+      c.req.query('mode') === 'weak' ? '/play?intent=weak' : '/play'
+    );
+  }
+
   const now = new Date();
 
   if (c.req.query('mode') === 'weak') {
@@ -64,7 +70,7 @@ review.get('/review', async (c) => {
     const choices = card ? await choicesFor(c.env.DB, user.id, card) : null;
 
     return c.html(
-      <Layout title="취약 단어" user={user}>
+      <Layout title="취약 단어" user={user} hideNav>
         <div id="review-root">
           {card ? (
             <Fragment
@@ -103,7 +109,7 @@ review.get('/review', async (c) => {
     : null;
 
   return c.html(
-    <Layout title="학습" user={user}>
+    <Layout title="학습" user={user} hideNav>
       <div id="review-root">
         {picked ? (
           <Fragment
@@ -276,7 +282,7 @@ review.post('/review/:id/answer', async (c) => {
   const source = parseSource(body['source']);
 
   const now = new Date();
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
   const responseMs = clampResponseMs(shownAt, now);
   const reviewKey = shownAt ? `${card.id}:${shownAt}` : null;
   const rating = ratingFromQuiz({
@@ -350,7 +356,7 @@ review.post('/review/:id/choice', async (c) => {
   const source = parseSource(body['source']);
 
   const now = new Date();
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
   const responseMs = clampResponseMs(shownAt, now);
   const reviewKey = shownAt ? `${card.id}:${shownAt}` : null;
   const correct = normalize(choice) === normalize(card.meaning);
@@ -413,7 +419,7 @@ review.post('/review/:id', async (c) => {
   if (!card) return c.text('카드를 찾을 수 없습니다.', 404);
 
   const now = new Date();
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
   const requestedMs = Number(body['response_ms']);
   const responseMs = Number.isFinite(requestedMs) ? requestedMs : null;
   const source = parseSource(body['source']);
@@ -511,7 +517,7 @@ async function progressFor(db: D1Database, user: User, now: Date): Promise<Progr
   return getProgress(
     db,
     user.id,
-    localDate(now, user.tz_offset_min),
+    localDate(now, user.tz_offset_min, user.timezone),
     now.toISOString(),
     user.daily_new,
     user.daily_review
@@ -535,7 +541,7 @@ async function weakContext(
   const normal = await progressFor(db, user, now);
   const report = await listWeakness(db, user.id, now);
   const ids = weakWordIds(report);
-  const today = localDate(now, user.tz_offset_min);
+  const today = localDate(now, user.tz_offset_min, user.timezone);
 
   const [due, done] = await Promise.all([
     countWeakDue(db, user.id, now.toISOString(), ids),
@@ -584,7 +590,7 @@ async function markPlanCompleted(
     await updatePlanCompletion(
       db,
       user.id,
-      localDate(now, user.tz_offset_min),
+      localDate(now, user.tz_offset_min, user.timezone),
       now
     );
   } catch (err) {
@@ -721,8 +727,15 @@ function Fragment(props: {
         <span>{props.prog.done}장 완료</span>
         <span>{props.prog.remaining}장 남음</span>
       </div>
-      <div class="mt-2 h-1 overflow-hidden rounded-full bg-line">
-        <div class="h-1 rounded-full bg-accent transition-[width]" style={`width:${pct}%`}></div>
+      <div
+        class="mt-2 h-2 overflow-hidden rounded-full bg-line"
+        role="progressbar"
+        aria-label="오늘 학습 진행률"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={props.prog.done}
+      >
+        <div class="h-2 rounded-full bg-accent transition-[width]" style={`width:${pct}%`}></div>
       </div>
 
       <div class="mt-10">{CardView({ ...props, source })}</div>
@@ -823,9 +836,9 @@ function RecognitionCard(props: {
   const hasChoices = Boolean(props.choices && props.choices.length >= 2);
 
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-16">
-        <p class="text-xs text-muted">
+        <p class="inline-block rounded-full bg-line px-3 py-1 text-xs font-semibold text-muted">
           {stage === 'intro'
             ? '새 단어'
             : stage === 'choice' && hasChoices
@@ -901,7 +914,7 @@ function ChoiceBody(props: {
             name="choice"
             value={choice}
             data-choice={String(index + 1)}
-            class="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3 text-left text-sm transition-colors hover:border-accent-text hover:text-accent-text"
+            class="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left text-sm font-medium transition-colors hover:border-accent-text hover:bg-accent-soft/40 hover:text-accent-text"
           >
             <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-xs text-muted">
               {index + 1}
@@ -930,10 +943,11 @@ function ChoiceResult(props: {
     : null;
 
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-10 text-center sm:px-10">
-        <p class={`text-sm font-medium ${props.correct ? 'text-accent-text' : 'text-danger'}`}>
-          {props.correct ? '정답' : '오답'}
+        <ResultMark ok={props.correct} />
+        <p class={`mt-3 text-sm font-bold ${props.correct ? 'text-success' : 'text-danger'}`}>
+          {props.correct ? '정답!' : '오답'}
         </p>
 
         <p class="mt-4 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
@@ -964,7 +978,7 @@ function ChoiceResult(props: {
           hx-target="#review-root"
           hx-swap="innerHTML"
           data-act="next"
-          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           계속
         </button>
@@ -977,9 +991,9 @@ function RecallPrompt(props: { card: QueueCard; shownAt: string; source: ReviewS
   const blanked = blankOut(props.card.example, props.card.term);
 
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
-        <p class="text-xs text-muted">뜻을 보고 영어로 쓰세요</p>
+        <p class="inline-block rounded-full bg-line px-3 py-1 text-xs font-semibold text-muted">뜻을 보고 영어로 쓰세요</p>
         <p class="mt-4 text-2xl leading-snug">{props.card.meaning}</p>
 
         {blanked ? <p class="mt-4 font-word text-sm leading-6 text-muted">{blanked}</p> : null}
@@ -1007,7 +1021,7 @@ function RecallPrompt(props: { card: QueueCard; shownAt: string; source: ReviewS
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="mt-3 w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -1020,9 +1034,9 @@ function ClozePrompt(props: { card: QueueCard; shownAt: string; source: ReviewSo
   const blanked = blankOut(props.card.example, props.card.term);
 
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
-        <p class="text-xs text-muted">빈칸에 들어갈 단어를 쓰세요</p>
+        <p class="inline-block rounded-full bg-line px-3 py-1 text-xs font-semibold text-muted">빈칸에 들어갈 단어를 쓰세요</p>
 
         {blanked ? (
           <BlankedSentence text={blanked} />
@@ -1060,7 +1074,7 @@ function ClozePrompt(props: { card: QueueCard; shownAt: string; source: ReviewSo
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="mt-3 w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -1075,9 +1089,9 @@ function ListeningPrompt(props: {
   source: ReviewSource;
 }) {
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
-        <p class="text-xs text-muted">듣고 철자를 입력하세요</p>
+        <p class="inline-block rounded-full bg-line px-3 py-1 text-xs font-semibold text-muted">듣고 철자를 입력하세요</p>
 
         <button
           type="button"
@@ -1115,7 +1129,7 @@ function ListeningPrompt(props: {
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="mt-3 w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -1166,12 +1180,15 @@ function ProductionResult(props: {
     : null;
 
   return (
-    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+    <article class="rounded-2xl border border-line bg-surface shadow-card">
       <div class="px-6 py-10 text-center sm:px-10">
+        <ResultMark ok={result.ok} />
         {result.ok ? (
-          <p class="text-sm font-medium text-accent-text">{result.typo ? '정답 (철자 확인)' : '정답'}</p>
+          <p class="mt-3 text-sm font-bold text-success">
+            {result.typo ? '정답 (철자 확인)' : '정답!'}
+          </p>
         ) : (
-          <p class="text-sm font-medium text-danger">오답</p>
+          <p class="mt-3 text-sm font-bold text-danger">오답</p>
         )}
 
         <p class="mt-4 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
@@ -1210,7 +1227,7 @@ function ProductionResult(props: {
           hx-target="#review-root"
           hx-swap="innerHTML"
           data-act="next"
-          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           계속
         </button>
@@ -1303,7 +1320,7 @@ function IntroBody(props: { card: QueueCard; source: ReviewSource }) {
           hx-vals={JSON.stringify({ source: props.source })}
           hx-target="#review-root"
           hx-swap="innerHTML"
-          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+          class="w-full rounded-xl bg-accent shadow-brand px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           가리고 확인하기
         </button>
@@ -1434,7 +1451,7 @@ function RateButton(props: {
   const tones: Record<string, string> = {
     again: 'border-danger/40 text-danger hover:bg-danger-soft',
     hard: 'border-line text-muted hover:border-ink/30',
-    good: 'border-accent-text bg-accent text-white hover:bg-accent-strong',
+    good: 'border-accent-text bg-accent text-white shadow-brand hover:bg-accent-strong',
   };
 
   const vals: Record<string, unknown> = { rating: props.rating, source: props.source };
@@ -1460,14 +1477,64 @@ function RateButton(props: {
   );
 }
 
+function ResultMark(props: { ok: boolean }) {
+  return (
+    <div
+      class={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
+        props.ok ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'
+      }`}
+    >
+      {props.ok ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-10 w-10"
+          aria-hidden="true"
+        >
+          <path d="m5 12 5 5L20 7" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          class="h-10 w-10"
+          aria-hidden="true"
+        >
+          <path d="m6 6 12 12M18 6 6 18" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
 function SpeakButton(props: { term: string }) {
   return (
     <button
       type="button"
       data-speak={props.term}
-      class="mt-4 text-xs text-muted underline-offset-4 hover:text-accent-text hover:underline"
+      aria-label="발음 듣기"
+      class="mx-auto mt-3 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent-text transition-colors hover:bg-accent/10"
     >
-      발음 듣기
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="h-5 w-5"
+        aria-hidden="true"
+      >
+        <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+        <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+      </svg>
     </button>
   );
 }
@@ -1498,18 +1565,19 @@ function WeakDone(props: {
 
   return (
     <div class="mt-6 text-center">
-      <p class="font-word text-3xl tracking-tight">취약 단어 연습</p>
-      <p class="mt-4 text-sm leading-6 text-muted">{message}</p>
-      <div class="mt-8 flex justify-center gap-2">
+      <ResultMark ok />
+      <p class="mt-4 text-2xl font-extrabold tracking-tight">취약 단어 연습</p>
+      <p class="mt-3 text-sm leading-6 text-muted">{message}</p>
+      <div class="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
         <a
           href="/hard?tab=weak"
-          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
+          class="rounded-xl bg-accent px-5 py-3 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
         >
           취약 단어 목록
         </a>
         <a
           href="/"
-          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
+          class="rounded-xl border border-line px-5 py-3 text-sm font-semibold hover:border-accent-text"
         >
           대시보드로
         </a>
@@ -1528,27 +1596,28 @@ function Done(props: {
 
   return (
     <div class="mt-6 text-center">
-      <p class="font-word text-3xl tracking-tight">
+      <ResultMark ok />
+      <p class="mt-4 text-2xl font-extrabold tracking-tight">
         {props.plan?.completed ? '오늘 계획 완료' : '오늘은 다 했어요'}
       </p>
-      <p class="mt-4 text-sm leading-6 text-muted">
+      <p class="mt-2 text-sm leading-6 text-muted">
         오늘 {props.prog.done}장을 복습했습니다.
       </p>
       {remainingDue > 0 ? (
-        <p class="mt-2 text-sm leading-6 text-muted">
+        <p class="mt-2 text-xs leading-5 text-muted">
           복습 상한 때문에 남은 {remainingDue}장은 내일로 넘깁니다.
         </p>
       ) : null}
-      <div class="mt-8 flex justify-center gap-2">
+      <div class="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
         <a
           href="/hard?tab=weak"
-          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
+          class="rounded-xl bg-accent px-5 py-3 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
         >
-          취약 단어
+          취약 단어 다시 보기
         </a>
         <a
           href="/"
-          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
+          class="rounded-xl border border-line px-5 py-3 text-sm font-semibold hover:border-accent-text"
         >
           대시보드로
         </a>

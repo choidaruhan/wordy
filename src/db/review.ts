@@ -1,6 +1,7 @@
 import { schedule, type CardRow, type Scheduled } from '../lib/srs';
 import { blankOut, normalize } from '../lib/grade';
 import { computeQuota, isCorrectRating } from '../lib/quota';
+import { computeGradingReliability } from '../lib/rating-config';
 import type { Grade } from 'ts-fsrs';
 
 export type QueueCard = CardRow & {
@@ -30,10 +31,16 @@ export type ReviewOptions = {
   source?: ReviewSource;
   gradingSource?: 'self' | 'server';
   reviewKey?: string | null;
+  sessionId?: string | null;
   fsrsParams?: number[] | null;
+  promptStartedAt?: string | null;
+  firstInputAt?: string | null;
+  confidence?: number | null;
+  gradingReliability?: number | null;
+  ratingModelVersion?: number;
 };
 
-const SELECT_CARD = `
+export const SELECT_CARD = `
   SELECT c.id, c.word_id, c.card_type, c.stability, c.difficulty, c.scheduled_days,
          c.learning_steps, c.reps, c.lapses, c.state, c.due_at, c.last_reviewed_at,
          w.term, w.meaning, w.pos, w.example, w.example_ko, w.note,
@@ -61,6 +68,20 @@ function chunked<T>(items: T[], size: number): T[][] {
 function isUniqueViolation(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return message.includes('UNIQUE constraint failed');
+}
+
+function isSessionGuardViolation(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('PLAY_SESSION_NOT_ACTIVE') ||
+    message.includes('PLAY_SESSION_ITEM_NOT_FOUND')
+  );
+}
+
+function normalizeIso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
 /** 기한이 지난 복습 카드 1장 */
@@ -254,6 +275,23 @@ export async function saveReview(
       ? null
       : Math.max(0, Math.min(300_000, Math.trunc(opts.responseMs)));
   const reviewKey = opts.reviewKey ?? null;
+  const sessionId = opts.sessionId ?? null;
+  const promptStartedAt = normalizeIso(opts.promptStartedAt);
+  const firstInputAt = normalizeIso(opts.firstInputAt);
+  const rawConfidence = Number(opts.confidence);
+  const confidence =
+    opts.confidence == null || !Number.isFinite(rawConfidence)
+      ? null
+      : Math.max(0, Math.min(2, Math.trunc(rawConfidence)));
+  const rawReliability = Number(opts.gradingReliability);
+  const gradingReliability =
+    opts.gradingReliability == null || !Number.isFinite(rawReliability)
+      ? null
+      : Math.max(0, Math.min(1, rawReliability));
+  const ratingModelVersion =
+    opts.ratingModelVersion != null && Number.isFinite(opts.ratingModelVersion)
+      ? Math.max(1, Math.trunc(opts.ratingModelVersion))
+      : 1;
 
   // 같은 프롬프트의 재전송은 여기서 끝낸다. (unique index가 최종 방어선)
   if (reviewKey) {
@@ -294,12 +332,16 @@ export async function saveReview(
              id, card_id, user_id, rating, local_date, reviewed_at,
              elapsed_days, scheduled_days, reps_before, prev_state,
              question_type, answer, is_correct, grading_source, response_ms,
-             review_key, attempt_seq, source, next_state, next_due_at
+             prompt_started_at, first_input_at, confidence, rating_model_version,
+             grading_reliability, review_key, attempt_seq, source, session_id,
+             next_state, next_due_at
            )
            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?,
                   (SELECT COUNT(*) + 1 FROM reviews WHERE card_id = ? AND local_date = ?),
-                  ?, ?, ?
+                  ?, ?, ?, ?
             WHERE EXISTS (
               SELECT 1 FROM cards
                WHERE id = ? AND user_id = ? AND last_reviewed_at = ?
@@ -321,10 +363,16 @@ export async function saveReview(
           isCorrect,
           gradingSource,
           responseMs,
+          promptStartedAt,
+          firstInputAt,
+          confidence,
+          ratingModelVersion,
+          gradingReliability,
           reviewKey,
           row.id,
           localDateStr,
           source,
+          sessionId,
           s.state,
           s.due_at,
           row.id,
@@ -334,7 +382,8 @@ export async function saveReview(
     ]);
   } catch (err) {
     // 같은 리뷰가 동시에 들어온 경우: batch 전체가 롤백됐으므로 중복으로 처리한다.
-    if (isUniqueViolation(err)) return null;
+    // 세션 item 검증 실패(만료/이미 답함/출제되지 않음)도 저장하지 않는다.
+    if (isUniqueViolation(err) || isSessionGuardViolation(err)) return null;
     throw err;
   }
 
@@ -350,8 +399,65 @@ export async function saveReview(
   return s;
 }
 
-const LEECH_THRESHOLD = 8;
-const RECALL_UNLOCK_DAYS = 4;
+/** 플레이 답안의 review_key로 리뷰 ID를 찾는다. */
+export async function getReviewIdByKey(
+  db: D1Database,
+  userId: string,
+  reviewKey: string
+): Promise<string | null> {
+  const row = await db
+    .prepare(
+      'SELECT id FROM reviews WHERE user_id = ? AND review_key = ? LIMIT 1'
+    )
+    .bind(userId, reviewKey)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+/** 답변 후 선택적으로 확신도를 기록하고 채점 신뢰도를 다시 계산한다. */
+export async function updateReviewConfidence(
+  db: D1Database,
+  userId: string,
+  sessionId: string,
+  reviewId: string,
+  confidence: number
+): Promise<boolean> {
+  const review = await db
+    .prepare(
+      `SELECT question_type, is_correct, response_ms
+         FROM reviews
+        WHERE id = ? AND user_id = ? AND session_id = ?`
+    )
+    .bind(reviewId, userId, sessionId)
+    .first<{
+      question_type: string | null;
+      is_correct: number | null;
+      response_ms: number | null;
+    }>();
+
+  if (!review) return false;
+
+  const value = Math.max(0, Math.min(2, Math.trunc(confidence)));
+  const gradingReliability = computeGradingReliability({
+    correct: review.is_correct === 1,
+    responseMs: review.response_ms,
+    cardType: review.question_type ?? 'unknown',
+    confidence: value,
+  });
+
+  const res = await db
+    .prepare(
+      `UPDATE reviews
+          SET confidence = ?, grading_reliability = ?
+        WHERE id = ? AND user_id = ? AND session_id = ?`
+    )
+    .bind(value, gradingReliability, reviewId, userId, sessionId)
+    .run();
+
+  return (res.meta.changes ?? 0) > 0;
+}
+
+const LEECH_THRESHOLD = 8;const RECALL_UNLOCK_DAYS = 4;
 const CLOZE_UNLOCK_STABILITY = 7;
 const LISTENING_UNLOCK_DAYS = 14;
 
