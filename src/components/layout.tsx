@@ -12,8 +12,9 @@ const HEAD_INIT_JS = `
   if (meta) meta.setAttribute('content', dark ? '#0f0b1f' : '#5f2eea');
 })();
 
-// 설치 프롬프트는 페이지 로드 초기에 발생할 수 있어 head에서 먼저 잡아둔다.
+// 설치 프롬프트는 설정 화면에서만 붙잡아 자체 버튼으로 띄운다.
 window.addEventListener('beforeinstallprompt', function (e) {
+  if (location.pathname !== '/settings') return;
   e.preventDefault();
   window.__wordyInstallPrompt = e;
 });
@@ -308,6 +309,7 @@ document.addEventListener('keydown', function (e) {
   window.addEventListener('appinstalled', function () {
     installed = true;
     promptEvent = null;
+    window.__wordyInstallPrompt = null;
     render();
   });
 
@@ -316,6 +318,7 @@ document.addEventListener('keydown', function (e) {
       if (!promptEvent) return;
       var event = promptEvent;
       promptEvent = null;
+      window.__wordyInstallPrompt = null;
       try {
         event.prompt();
       } catch (err) {
