@@ -36,7 +36,7 @@
 | [docs/05-ui-routes.md](docs/05-ui-routes.md) | 라우트 목록, HTMX 인터랙션 명세 | |
 | [docs/06-learning-design.md](docs/06-learning-design.md) | **학습 설계 — 어떻게 외우게 할 것인가** | |
 | [docs/07-learning-engine.md](docs/07-learning-engine.md) | **M6 학습 엔진 명세 — 취약 단어·세션·적응형 배분** | M6.6 반영 |
-| [docs/08-design-system.md](docs/08-design-system.md) | 4px 간격·글자 크기·색 토큰 | 신규 |
+| [docs/08-design-system.md](docs/08-design-system.md) | 디자인 2.0 — 토큰·다크 모드·화면 설계, `/design` 참조 | 갱신 |
 
 ---
 
@@ -147,6 +147,8 @@ Google OAuth 리디렉션 URI에 `https://<your-domain>/auth/google/callback` �
 | M6.4 | 단어 메타데이터, 다중 예문, CSV v2 | ✅ |
 | M6.5 | 듣기 카드, 발음 설정, TTS 학습 | ✅ |
 | M6.6 | FSRS 리뷰 로그 내보내기, 사용자별 파라미터 | ✅ |
+| M6.7 | 영→한 4지선다, 응답 시간 기반 자동 평점, 자기평가 제거 | ✅ |
+| M7 | 디자인 2.0 — 딥 틸 토큰, 다크 모드, `/design` 화면 설계 | ✅ |
 
 ### M3에서 확인된 동작
 - **승급**: 영→한 카드가 `review` 상태 + `scheduled_days >= 4` 가 되면 한→영 카드 자동 생성
@@ -196,6 +198,15 @@ Google OAuth 리디렉션 URI에 `https://<your-domain>/auth/google/callback` �
 - 파라미터는 `users.fsrs_params`에 저장되고, 카드 스케줄과 다음 복습일 미리보기에 즉시 반영됩니다.
 - 잘못된 배열은 거부하고 기본값을 유지합니다.
 - 리뷰 1,000건 이전에는 기본 파라미터를 쓰는 것을 권장합니다.
+
+### 퀴즈 중심 학습 (M6.7)
+- 영→한 `recognition` 카드는 **4지선다**로 출제됩니다. 정답 뜻 + 다른 단어 뜻 3개를 섞습니다.
+- 사용자의 자기평가(Again/Hard/Good/Easy)를 없애고, **정답 여부 + 응답 시간**으로 자동 평점합니다.
+  - 오답 → `Again`, 오타·8초 초과 정답 → `Hard`, 3~8초 정답 → `Good`, 3초 이내 생산형 정답 → `Easy`.
+  - 객관식은 찍어서 맞힌 경우를 구분하기 위해 `Easy`를 주지 않습니다.
+- 신규 단어는 뜻·예문 소개 → `[가리고 확인하기]` → 4지선다 순서입니다.
+- 보기가 2개 미만인 단어만 기존 자기평가 화면으로 폴백합니다.
+- 기존 `cards`/`reviews` 기록과 FSRS 일정은 그대로 유지됩니다. 스키마 변경은 없습니다.
 
 > **중복 제출 방지**: 같은 프롬프트의 재전송은 `review_key = card_id:shown_at` 멱등키와
 > `reps` 낙관적 락으로 한 번만 기록됩니다. (M6.1)

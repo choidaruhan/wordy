@@ -48,9 +48,9 @@ decks.get('/decks', async (c) => {
           required
           maxlength={60}
           placeholder="새 단어장 이름"
-          class="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
+          class="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
         />
-        <button type="submit" class="rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90">
+        <button type="submit" class="rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong">
           만들기
         </button>
       </form>
@@ -63,11 +63,11 @@ decks.get('/decks', async (c) => {
         <ul class="mt-8">
           {list.map((d) => (
             <li class="flex items-baseline justify-between gap-4 border-b border-line py-3">
-              <a href={`/decks/${d.id}`} class="text-base hover:text-accent">
+              <a href={`/decks/${d.id}`} class="text-base hover:text-accent-text">
                 {d.name}
               </a>
               <div class="flex shrink-0 items-baseline gap-4 text-sm text-muted">
-                <span>{d.word_count}개</span>
+                <span>{d.word_count.toLocaleString('ko-KR')}개</span>
                 <button
                   hx-delete={`/decks/${d.id}`}
                   hx-confirm="단어장과 안의 단어를 모두 삭제할까요?"
@@ -88,7 +88,7 @@ decks.get('/decks', async (c) => {
         </p>
         <ul class="mt-4 space-y-2">
           {SEEDS.map((seed) => (
-            <li class="flex items-center justify-between gap-4 border border-line bg-surface px-4 py-3">
+            <li class="flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-4 py-3 shadow-card">
               <div class="min-w-0">
                 <p class="text-sm font-medium">{seed.name}</p>
                 <p class="mt-1 text-xs text-muted">{seed.description}</p>
@@ -96,7 +96,7 @@ decks.get('/decks', async (c) => {
               <form method="post" action={`/seeds/${seed.slug}`} class="shrink-0">
                 <button
                   type="submit"
-                  class="min-h-11 rounded border border-line px-4 py-2 text-sm hover:border-accent"
+                  class="min-h-11 rounded-xl border border-line px-4 py-2 text-sm hover:border-accent-text"
                 >
                   추가
                 </button>
@@ -134,11 +134,11 @@ decks.get('/decks/:id', async (c) => {  const user = c.get('user');
       <div class="flex items-baseline justify-between gap-4">
         <h1 class="text-2xl font-semibold">{deck.name}</h1>
         <div class="flex shrink-0 items-baseline gap-3 text-sm text-muted">
-          <span>{words.length}개</span>
-          <a href={`/decks/${deck.id}/export`} class="text-accent hover:underline">
+          <span>{words.length.toLocaleString('ko-KR')}개</span>
+          <a href={`/decks/${deck.id}/export`} class="text-accent-text hover:underline">
             내보내기
           </a>
-          <a href={`/decks/${deck.id}/export?full=1`} class="text-accent hover:underline">
+          <a href={`/decks/${deck.id}/export?full=1`} class="text-accent-text hover:underline">
             전체
           </a>
         </div>
@@ -159,23 +159,23 @@ decks.get('/decks/:id', async (c) => {  const user = c.get('user');
           required
           autocomplete="off"
           placeholder="단어"
-          class="rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
+          class="rounded-xl border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
         />
         <input
           name="meaning"
           required
           autocomplete="off"
           placeholder="뜻"
-          class="rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
+          class="rounded-xl border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
         />
-        <button type="submit" class="rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90">
+        <button type="submit" class="rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong">
           추가
         </button>
         <input
           name="example"
           autocomplete="off"
           placeholder="예문 (선택)"
-          class="rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70 sm:col-span-3"
+          class="rounded-xl border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70 sm:col-span-3"
         />
         <span id="form-msg" class="text-sm text-danger sm:col-span-3"></span>
       </form>
@@ -314,7 +314,7 @@ function WordRowView(props: { w: WordRow }) {
           ) : null}
           <span class="text-sm text-muted">{w.meaning}</span>
           {w.level ? (
-            <span class="rounded border border-line px-2 py-1 text-xs text-muted">
+            <span class="rounded-xl border border-line px-2 py-1 text-xs text-muted">
               {w.level}
             </span>
           ) : null}
@@ -330,7 +330,7 @@ function WordRowView(props: { w: WordRow }) {
         ) : null}
         {hasDetails ? (
           <details class="mt-1">
-            <summary class="cursor-pointer text-xs text-muted hover:text-accent">
+            <summary class="cursor-pointer text-xs text-muted hover:text-accent-text">
               예문·표현 더 보기
             </summary>
             <div class="mt-1 space-y-1 text-sm leading-5 text-muted">

@@ -31,7 +31,7 @@ quiz.get('/quiz', async (c) => {
       </p>
 
       {error === 'words' ? (
-        <p class="mt-4 rounded border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+        <p class="mt-4 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
           단어가 4개 이상 있어야 테스트를 만들 수 있습니다.
         </p>
       ) : null}
@@ -39,7 +39,7 @@ quiz.get('/quiz', async (c) => {
       {active ? (
         <div class="mt-6 border border-line bg-surface px-4 py-3 text-sm">
           <p>진행 중인 테스트가 있습니다.</p>
-          <a href="/quiz/session" class="mt-2 inline-block text-accent hover:underline">
+          <a href="/quiz/session" class="mt-2 inline-block text-accent-text hover:underline">
             이어서 하기
           </a>
         </div>
@@ -48,11 +48,11 @@ quiz.get('/quiz', async (c) => {
       <form method="post" action="/quiz/start" class="mt-8 border-t border-line pt-6">
         <p class="text-sm font-medium">문제 수</p>
         <div class="mt-3 flex gap-2">
-          <label class="flex-1 cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+          <label class="flex-1 cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
             <input type="radio" name="count" value="10" checked class="sr-only" />
             10문제
           </label>
-          <label class="flex-1 cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+          <label class="flex-1 cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
             <input type="radio" name="count" value="20" class="sr-only" />
             20문제
           </label>
@@ -60,7 +60,7 @@ quiz.get('/quiz', async (c) => {
 
         <button
           type="submit"
-          class="mt-6 w-full rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="mt-6 w-full rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           테스트 시작
         </button>
@@ -172,8 +172,8 @@ function Progress(props: { current: number; total: number; correct: number }) {
         </span>
         <span>{props.correct}개 정답</span>
       </div>
-      <div class="mt-2 h-1 w-full bg-line">
-        <div class="h-1 bg-accent" style={`width:${pct}%`}></div>
+      <div class="mt-2 h-1 overflow-hidden rounded-full bg-line">
+        <div class="h-1 rounded-full bg-accent" style={`width:${pct}%`}></div>
       </div>
     </>
   );
@@ -186,7 +186,7 @@ function QuestionView(props: { question: QuizQuestion; session: QuizSession; don
     <>
       <Progress current={current} total={props.session.total} correct={props.session.correct} />
 
-      <article class="mt-8 rounded-sm border border-line border-b-2 border-b-line bg-surface">
+      <article class="mt-8 rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
         <div class="px-6 py-10 text-center sm:px-10 sm:py-14">
           <p class="text-xs text-muted">이 단어의 뜻은?</p>
           <p class="mt-3 font-word text-4xl leading-tight tracking-tight sm:text-5xl">
@@ -206,7 +206,7 @@ function QuestionView(props: { question: QuizQuestion; session: QuizSession; don
             hx-target="#quiz-root"
             hx-swap="innerHTML"
             hx-disabled-elt="this"
-            class="flex w-full items-baseline gap-3 rounded border border-line bg-surface px-4 py-3 text-left text-sm hover:border-accent"
+            class="flex w-full items-baseline gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left text-sm hover:border-accent-text"
           >
             <span class="text-xs text-muted">{index + 1}</span>
             <span>{option}</span>
@@ -232,9 +232,9 @@ function Feedback(props: {
     <>
       <Progress current={current} total={props.session.total} correct={props.session.correct} />
 
-      <article class="mt-8 rounded-sm border border-line border-b-2 border-b-line bg-surface">
+      <article class="mt-8 rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
         <div class="px-6 py-10 text-center sm:px-10">
-          <p class={`text-sm font-medium ${props.correct ? 'text-accent' : 'text-danger'}`}>
+          <p class={`text-sm font-medium ${props.correct ? 'text-accent-text' : 'text-danger'}`}>
             {props.correct ? '정답' : '오답'}
           </p>
           <p class="mt-3 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
@@ -255,7 +255,7 @@ function Feedback(props: {
             hx-vals={JSON.stringify({ sessionId: props.session.id })}
             hx-target="#quiz-root"
             hx-swap="innerHTML"
-            class="w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+            class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
           >
             다음
           </button>
@@ -298,10 +298,10 @@ function ResultView(props: { result: QuizResult }) {
       )}
 
       <div class="mt-8 flex gap-2">
-        <a href="/quiz" class="rounded bg-accent px-5 py-3 text-sm text-white hover:opacity-90">
+        <a href="/quiz" class="rounded-xl bg-accent px-5 py-3 text-sm text-white hover:bg-accent-strong">
           다시 하기
         </a>
-        <a href="/" class="rounded border border-line px-5 py-3 text-sm hover:border-accent">
+        <a href="/" class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text">
           홈으로
         </a>
       </div>

@@ -1,5 +1,5 @@
 import { schedule, type CardRow, type Scheduled } from '../lib/srs';
-import { blankOut } from '../lib/grade';
+import { blankOut, normalize } from '../lib/grade';
 import { computeQuota, isCorrectRating } from '../lib/quota';
 import type { Grade } from 'ts-fsrs';
 
@@ -170,6 +170,62 @@ export async function getCardForReview(
     .prepare(`${SELECT_CARD} WHERE c.id = ? AND c.user_id = ?`)
     .bind(cardId, userId)
     .first<QueueCard>();
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * 영→한 객관식 보기. 정답 뜻 + 사용자의 다른 단어 뜻 3개를 섞어서 돌려준다.
+ * 보기가 2개 미만이면 객관식이 성립하지 않으므로 빈 배열을 돌려준다.
+ */
+export async function getMeaningChoices(
+  db: D1Database,
+  userId: string,
+  wordId: string,
+  meaning: string,
+  count = 4
+): Promise<string[]> {
+  const answer = meaning.trim();
+  if (!answer) return [];
+
+  const { results } = await db
+    .prepare(
+      `SELECT meaning
+         FROM (
+           SELECT DISTINCT w.meaning AS meaning
+             FROM words w
+             JOIN decks d ON d.id = w.deck_id
+            WHERE d.user_id = ?
+              AND w.id <> ?
+              AND w.meaning IS NOT NULL
+              AND TRIM(w.meaning) <> ''
+              AND w.meaning <> ?
+         )
+        ORDER BY RANDOM()
+        LIMIT ?`
+    )
+    .bind(userId, wordId, answer, Math.max(0, count - 1))
+    .all<{ meaning: string }>();
+
+  const seen = new Set([normalize(answer)]);
+  const options = [answer];
+
+  for (const row of results) {
+    const key = normalize(row.meaning);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(row.meaning);
+    if (options.length >= count) break;
+  }
+
+  return options.length >= 2 ? shuffle(options) : [];
 }
 
 /**

@@ -1,10 +1,10 @@
 /* Wordy service worker — 앱 셸만 캐시한다. HTML은 절대 캐시하지 않는다. */
-const VERSION = 'wordy-v1';
+const VERSION = 'wordy-v2';
 
 const SHELL = [
   '/offline.html',
   '/manifest.webmanifest',
-  '/styles.css',
+  '/styles.css?v=2',
   '/htmx.min.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

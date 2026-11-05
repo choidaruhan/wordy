@@ -27,7 +27,7 @@ settings.get('/settings', async (c) => {
       <h1 class="text-2xl font-semibold">설정</h1>
 
       {saved ? (
-        <p class="mt-4 rounded border border-accent/30 bg-accent-soft px-4 py-3 text-sm text-accent">
+        <p class="mt-4 rounded-xl border border-accent-text/30 bg-accent-soft px-4 py-3 text-sm text-accent-text">
           저장했습니다.
         </p>
       ) : null}
@@ -43,7 +43,7 @@ settings.get('/settings', async (c) => {
             value={user.display_name ?? ''}
             maxlength={40}
             autocomplete="nickname"
-            class="mt-2 w-full rounded border border-line bg-surface px-3 py-3 text-sm"
+            class="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-3 text-sm"
           />
         </div>
 
@@ -51,7 +51,7 @@ settings.get('/settings', async (c) => {
           <legend class="text-sm font-medium">하루 신규 단어</legend>
           <div class="mt-2 grid grid-cols-3 gap-2">
             {NEW_OPTIONS.map((n) => (
-              <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+              <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
                 <input
                   type="radio"
                   name="daily_new"
@@ -71,7 +71,7 @@ settings.get('/settings', async (c) => {
         <fieldset>
           <legend class="text-sm font-medium">신규 단어 배분</legend>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="new_card_mode"
@@ -81,7 +81,7 @@ settings.get('/settings', async (c) => {
               />
               자동
             </label>
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="new_card_mode"
@@ -109,14 +109,14 @@ settings.get('/settings', async (c) => {
             max={1000}
             step={10}
             value={String(user.daily_review)}
-            class="mt-2 w-32 rounded border border-line bg-surface px-3 py-3 text-sm tabular-nums"
+            class="mt-2 w-32 rounded-xl border border-line bg-surface px-3 py-3 text-sm tabular-nums"
           />
         </div>
 
         <fieldset>
           <legend class="text-sm font-medium">듣기 카드</legend>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="listening_enabled"
@@ -126,7 +126,7 @@ settings.get('/settings', async (c) => {
               />
               사용 안 함
             </label>
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="listening_enabled"
@@ -146,7 +146,7 @@ settings.get('/settings', async (c) => {
         <fieldset>
           <legend class="text-sm font-medium">발음</legend>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="voice_locale"
@@ -156,7 +156,7 @@ settings.get('/settings', async (c) => {
               />
               미국식
             </label>
-            <label class="cursor-pointer rounded border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent has-[:checked]:text-accent">
+            <label class="cursor-pointer rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm has-[:checked]:border-accent-text has-[:checked]:text-accent-text">
               <input
                 type="radio"
                 name="voice_locale"
@@ -174,7 +174,7 @@ settings.get('/settings', async (c) => {
           <select
             id="voice_rate"
             name="voice_rate"
-            class="mt-1 rounded border border-line bg-surface px-3 py-3 text-sm"
+            class="mt-1 rounded-xl border border-line bg-surface px-3 py-3 text-sm"
           >
             {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2].map((rate) => (
               <option value={String(rate)} selected={Math.abs(user.voice_rate - rate) < 0.01}>
@@ -186,7 +186,7 @@ settings.get('/settings', async (c) => {
 
         <button
           type="submit"
-          class="w-full rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="w-full rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           저장
         </button>
@@ -201,21 +201,21 @@ settings.get('/settings', async (c) => {
         <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
           <span>리뷰 {reviewCount}건</span>
           {user.fsrs_params ? (
-            <span class="text-accent">개인 파라미터 적용 중</span>
+            <span class="text-accent-text">개인 파라미터 적용 중</span>
           ) : reviewCount >= reviewGoal ? (
-            <span class="text-accent">최적화 준비됨</span>
+            <span class="text-accent-text">최적화 준비됨</span>
           ) : (
             <span class="text-muted">{reviewGoal - reviewCount}건 더 필요</span>
           )}
         </div>
 
         {fsrsStatus === 'saved' ? (
-          <p class="mt-3 rounded border border-accent/30 bg-accent-soft px-4 py-3 text-sm text-accent">
+          <p class="mt-3 rounded-xl border border-accent-text/30 bg-accent-soft px-4 py-3 text-sm text-accent-text">
             FSRS 파라미터를 저장했습니다.
           </p>
         ) : null}
         {fsrsStatus === 'invalid' ? (
-          <p class="mt-3 rounded border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+          <p class="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
             올바른 21개 숫자 배열이 아닙니다.
           </p>
         ) : null}
@@ -223,7 +223,7 @@ settings.get('/settings', async (c) => {
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <a
             href="/settings/fsrs/export"
-            class="rounded border border-line px-4 py-3 text-sm hover:border-accent"
+            class="rounded-xl border border-line px-4 py-3 text-sm hover:border-accent-text"
           >
             리뷰 로그 내보내기 (JSON)
           </a>
@@ -231,7 +231,7 @@ settings.get('/settings', async (c) => {
             <form method="post" action="/settings/fsrs/reset">
               <button
                 type="submit"
-                class="rounded border border-line px-4 py-3 text-sm text-muted hover:border-danger hover:text-danger"
+                class="rounded-xl border border-line px-4 py-3 text-sm text-muted hover:border-danger hover:text-danger"
               >
                 기본값으로 초기화
               </button>
@@ -253,13 +253,13 @@ settings.get('/settings', async (c) => {
             rows={4}
             spellcheck={false}
             placeholder="[0.212, 1.2931, ...]"
-            class="mt-2 w-full rounded border border-line bg-surface px-3 py-3 font-mono text-xs"
+            class="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-3 font-mono text-xs"
           >
             {user.fsrs_params ? JSON.stringify(user.fsrs_params) : ''}
           </textarea>
           <button
             type="submit"
-            class="mt-2 rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
+            class="mt-2 rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
           >
             파라미터 적용
           </button>

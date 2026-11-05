@@ -27,9 +27,10 @@
 | GET | `/review?mode=weak` | 필요 | 전체 | 기한이 도래한 취약 단어만 연습 |
 | GET | `/review/:cardId` | 필요 | 조각 | 앞면 카드 |
 | POST | `/review/next` | 필요 | 조각 | 결과 확인 후 다음 카드 |
-| POST | `/review/:cardId/hide` | 필요 | 조각 | 신규 카드 소개 → 뜻 가리기 |
-| POST | `/review/:cardId/reveal` | 필요 | 조각 | 뒷면(뜻/예문) 펼침 |
-| POST | `/review/:cardId/answer` | 필요 | 조각 | 한→영 / 빈칸 입력 채점 → 결과 |
+| POST | `/review/:cardId/hide` | 필요 | 조각 | 신규 카드 소개 → 4지선다 |
+| POST | `/review/:cardId/choice` | 필요 | 조각 | 영→한 4지선다 채점 → 결과 |
+| POST | `/review/:cardId/reveal` | 폴백 | 조각 | 보기가 부족할 때 뒷면(뜻/예문) 펼침 |
+| POST | `/review/:cardId/answer` | 필요 | 조각 | 한→영 / 빈칸 / 듣기 입력 채점 → 결과 |
 | GET | `/stats` | 필요 | 전체 | 학습 통계 |
 | GET | `/settings` | 필요 | 전체 | 학습 목표, 듣기, FSRS 설정 |
 | POST | `/settings` | 필요 | 302 | 설정 저장 |
@@ -39,6 +40,7 @@
 | GET | `/decks/:id/export` | 필요 | 파일 | 단어장 CSV 다운로드 |
 | GET | `/terms` | — | 전체 | 이용약관 |
 | GET | `/privacy` | — | 전체 | 개인정보처리방침 |
+| GET | `/design` | — | 전체 | 디자인 시스템 2.0 참조 화면 (토큰·화면 설계·모션) |
 | GET | `/quiz` | 필요 | 전체 | 테스트 설정 || POST | `/quiz/start` | 필요 | 302 | 새 테스트 생성 |
 | GET | `/quiz/session` | 필요 | 전체 | 현재 문제 |
 | POST | `/quiz/answer` | 필요 | 조각 | 채점 → 피드백 |
@@ -46,7 +48,7 @@
 | GET | `/hard?tab=weak\|observing\|leech` | 필요 | 전체 | 취약·관찰 중·격리 단어 목록 |
 | POST | `/hard/:cardId/note` | 필요 | 302 | 연상법 저장 |
 | POST | `/hard/:cardId/resume` | 필요 | 302 | 학습 큐로 복귀 |
-| POST | `/review/:cardId` | 필요 | 조각 | 평점(`rating`) 또는 입력 답안(`answer`) 처리 → 다음 카드 |
+| POST | `/review/:cardId` | 폴백 | 조각 | 보기 부족 시 자기평가(`rating`) 처리 → 다음 카드 |
 | GET | `/stats` | 필요 | 전체 | 통계 |
 | GET | `/settings` | 필요 | 전체 | 일일 목표, 타임존 |
 | POST | `/settings` | 필요 | 전체 | 설정 저장 |
@@ -57,18 +59,19 @@
 GET /review
   └─ 큐 생성 → 첫 카드 렌더 → HTML 전체
 
-POST /review/:id/reveal
-  └─ 카드 뒷면 조각 반환
+POST /review/:id/hide
+  └─ 신규 소개 → 4지선다 조각 반환
 
-POST /review/:id  (rating=3)
+POST /review/:id/choice  (영→한 4지선다)
+POST /review/:id/answer  (한→영 / 빈칸 / 듣기 입력)
   ├─ D1 batch: cards UPDATE + reviews INSERT
-  ├─ 다음 카드 1장 조회
-  └─ 다음 카드 조각 + 진행률 OOB 조각 반환
+  ├─ 정답/오답 + 다음 복습일 조각 반환
+  └─ [계속] → POST /review/next → 다음 카드
 ```
 
 ## 복습 화면 상세
 
-### 마크업
+### 마크업 (영→한 4지선다)
 
 ```tsx
 <div id="review-root">
@@ -77,49 +80,40 @@ POST /review/:id  (rating=3)
   <section id="card" class="...">
     <p class="text-3xl">ubiquitous</p>
     <p class="text-sm text-gray-500">/juːˈbɪkwɪtəs/</p>
+    <p>뜻을 고르세요</p>
 
-    <button
-      hx-post={`/review/${card.id}/reveal`}
-      hx-target="#card"
-      hx-swap="outerHTML"
-      class="...">
-      뜻 보기
-    </button>
+    <form hx-post={`/review/${card.id}/choice`} hx-target="#review-root" hx-swap="innerHTML">
+      <input type="hidden" name="shown_at" value={shownAt} />
+      <input type="hidden" name="source" value={source} />
+      {choices.map((choice, i) => (
+        <button name="choice" value={choice} data-choice={i + 1}>{choice}</button>
+      ))}
+    </form>
   </section>
 </div>
 ```
 
-### 뒷면 (reveal 응답)
+### 결과 응답
 
 ```tsx
-<section id="card" class="...">
+<article>
+  <p class="text-accent">정답</p>   {/* 또는 text-danger: 오답 */}
   <p class="text-3xl">ubiquitous</p>
-  <hr />
   <p class="text-xl">어디에나 있는</p>
-  <p class="text-sm text-gray-600">Smartphones are ubiquitous these days.</p>
-
-  <div class="grid grid-cols-4 gap-2 mt-6">
-    {[1,2,3,4].map(r => (
-      <button
-        hx-post={`/review/${card.id}`}
-        hx-vals={JSON.stringify({ rating: r, response_ms: responseMs, review_key: reviewKey, source })}
-        hx-target="#review-root"
-        hx-swap="innerHTML">
-        <span>{LABEL[r]}</span>
-        <small>{intervals[r]}</small>   {/* "10분" / "4일" / "2개월" */}
-      </button>
-    ))}
-  </div>
-</section>
+  {!correct ? <p>내 답: 드문</p> : null}
+  <p>다음 복습 4일</p>
+  <button hx-post="/review/next" data-act="next">계속</button>
+</article>
 ```
 
-> 뒷면에는 발음, 추가 예문, 함께 쓰는 표현, 유의어/반의어를 함께 표시한다.
+> 결과 화면에는 발음, 추가 예문, 함께 쓰는 표현, 유의어/반의어를 함께 표시한다.
 >
-> `response_ms`는 앞면 렌더 시 서버가 넣은 `shown_at`으로 계산한다.
+> `response_ms`는 보기 화면 렌더 시 서버가 넣은 `shown_at`으로 계산한다.
 > `review_key`는 `${card.id}:${shown_at}`다. 같은 프롬프트의 재전송을 막는 멱등키다.
 > `source`는 일반 복습이면 `review`, 취약 연습이면 `weak`다.
+> 정답 여부와 응답 시간으로 `Again/Hard/Good/Easy`를 서버가 정한다.
 
-### 다음 카드 응답 (평점 POST)
+### 다음 카드 응답 (제출 POST)
 
 ```tsx
 {/* 진행률 — 화면 다른 위치를 바꾸는 OOB 스왑 */}
@@ -135,7 +129,7 @@ POST /review/:id  (rating=3)
 
 ### 타이핑 카드 (`recall` / `cloze`)
 
-`recognition`은 자기평가지만, `recall`은 **서버가 채점**합니다. 평점 버튼이 없습니다.
+`recognition`은 4지선다, `recall`/`cloze`/`listening`은 입력으로 **서버가 채점**합니다. 평점 버튼이 없습니다.
 
 ```tsx
 <form
@@ -234,21 +228,17 @@ She ate ____ apple.
 
 | 키 | 동작 |
 |---|---|
-| `Space` / `Enter` | 뜻 보기 |
-| `1` | 모름 (Again) |
-| `2` | 늦게 떠오름 (Hard) |
-| `3` | 바로 떠오름 (Good) |
-| `4` | 아주 쉬움 (Easy) |
+| `Space` / `Enter` | 결과 화면에서 다음 카드 |
+| `1`~`4` | 4지선다 보기 선택 (폴백에서는 평점) |
 
 구현은 "해당 버튼을 찾아 `.click()`"이면 끝. HTMX가 나머지를 처리합니다.
 
 ```js
 document.addEventListener('keydown', (e) => {
-  const map = { '1':'again', '2':'hard', '3':'good', '4':'easy' };
   if (e.key === ' ' || e.key === 'Enter') {
-    document.querySelector('[data-reveal]')?.click();
-  } else if (map[e.key]) {
-    document.querySelector(`[data-rate="${map[e.key]}"]`)?.click();
+    document.querySelector('[data-act="next"],[data-act="hide"]')?.click();
+  } else if (e.key >= '1' && e.key <= '4') {
+    document.querySelector(`[data-choice="${e.key}"]`)?.click();
   }
 });
 ```
@@ -297,7 +287,7 @@ HTMX는 **4xx 응답을 기본적으로 swap하지 않습니다.** 따라서:
 
 ## 접근성
 
-- 평점 버튼은 실제 `<button>`. `div` + `onclick` 금지.
-- 카드 뒤집기 후 포커스를 평점 영역으로 이동 (`autofocus`).
-- 색만으로 평점을 구분하지 않기 (모름/늦게 떠오름/바로 떠오름/아주 쉬움 텍스트 병기).
-- `prefers-reduced-motion` 존중 — 뒤집기 애니메이션 끄기.
+- 보기·평점 버튼은 실제 `<button>`. `div` + `onclick` 금지.
+- 입력 카드가 열리면 입력창에 포커스 (`autofocus`).
+- 색만으로 정답·오답을 구분하지 않기 (`정답` / `오답` 텍스트 병기).
+- `prefers-reduced-motion` 존중 — 전환 애니메이션 끄기.

@@ -88,7 +88,7 @@ function TabLink(props: { href: string; active: boolean; label: string }) {
       href={props.href}
       class={`border-b-2 px-4 py-3 text-sm ${
         props.active
-          ? 'border-accent text-accent'
+          ? 'border-accent-text text-accent-text'
           : 'border-transparent text-muted hover:text-ink'
       }`}
     >
@@ -116,7 +116,7 @@ function WeakList(props: {
           {props.weakDue > 0 ? (
             <a
               href="/review?mode=weak"
-              class="mt-5 inline-block rounded bg-accent px-5 py-3 text-sm font-medium text-white hover:opacity-90"
+              class="mt-5 inline-block rounded-xl bg-accent px-5 py-3 text-sm font-medium text-white hover:bg-accent-strong"
             >
               취약 단어 연습 ({props.weakDue}장)
             </a>
@@ -176,8 +176,8 @@ function WeakItem(props: { word: WeakWord; now: Date }) {
           <span class="ml-2 text-sm text-muted">{w.meaning}</span>
         </div>
         <span
-          class={`shrink-0 rounded-sm px-2 py-1 text-xs ${
-            w.status === 'weak' ? 'bg-danger/10 text-danger' : 'bg-mark/30 text-ink'
+          class={`shrink-0 rounded-full px-2 py-1 text-xs ${
+            w.status === 'weak' ? 'bg-danger-soft text-danger' : 'bg-mark-soft text-ink'
           }`}
         >
           {w.status === 'weak' ? '취약' : '주의'}
@@ -273,18 +273,18 @@ function LeechList(props: {
                 value={w.note ?? ''}
                 maxlength={200}
                 placeholder="연상법을 적어보세요"
-                class="min-w-0 flex-1 rounded border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
+                class="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-3 text-sm placeholder:text-muted/70"
               />
               <button
                 type="submit"
-                class="rounded border border-line bg-surface px-4 py-3 text-sm hover:border-accent"
+                class="rounded-xl border border-line bg-surface px-4 py-3 text-sm hover:border-accent-text"
               >
                 저장
               </button>
             </form>
 
             <form method="post" action={`/hard/${w.card_id}/resume`} class="mt-2">
-              <button type="submit" class="text-xs text-accent hover:underline">
+              <button type="submit" class="text-xs text-accent-text hover:underline">
                 다시 학습에 포함
               </button>
             </form>

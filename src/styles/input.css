@@ -26,44 +26,227 @@
   --text-5xl: 48px;
   --text-5xl--line-height: 56px;
 
-  --color-paper: #f3f5f3;
+  /* 표면 */
+  --color-paper: #f5f7f4;
   --color-surface: #ffffff;
-  --color-ink: #16211e;
-  --color-muted: #5f6c68;
-  --color-line: #d9dfdc;
-  --color-accent: #12694f;
-  --color-accent-soft: #e2efe9;
-  --color-mark: #ffe08a;
-  --color-danger: #a33a2a;
+  --color-ink: #17211e;
+  --color-muted: #62706b;
+  --color-line: #dde3df;
+  --color-line-strong: #c5cfc9;
+
+  /* 행동: 채움(accent)과 글자·테두리(accent-text)를 분리한다.
+     다크 모드에서 채움은 흰 글자를 유지하고, 글자는 밝은 민트로 바꾼다. */
+  --color-accent: #0f766e;
+  --color-accent-strong: #0b5f58;
+  --color-accent-soft: #e1f3ef;
+  --color-accent-text: #0b5f58;
+
+  /* 동기: 스트릭·에너지는 앰버 하나만 쓴다. */
+  --color-streak: #b45309;
+  --color-streak-soft: #fff2da;
+
+  /* 기억 보조: 연상법, 주의 */
+  --color-mark: #f6c453;
+  --color-mark-soft: #fff7dd;
+
+  /* 오답: 초록 성공과 구분되는 코랄 */
+  --color-danger: #b8482f;
+  --color-danger-soft: #fbe9e4;
 
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-word: ui-serif, Georgia, "Times New Roman", serif;
+
+  /* 라운드: 컨트롤 12–16px, 카드 14–16px, 시트 24px */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  /* 그림자: 카드는 종이 한 장처럼, 떠 있는 요소는 한 단계 위로 */
+  --shadow-card: 0 1px 2px rgb(22 33 30 / 0.04), 0 8px 24px rgb(22 33 30 / 0.04);
+  --shadow-float: 0 24px 48px rgb(22 33 30 / 0.14);
+}
+
+/* 다크 모드: 시스템 설정을 따른다. 모든 유틸리티가 변수를 참조하므로
+   화면 코드에 dark:를 붙이지 않아도 색이 바뀐다. */
+:root {
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #0e1412;
+    --color-surface: #161d1a;
+    --color-ink: #e9efec;
+    --color-muted: #9aa8a2;
+    --color-line: #29322e;
+    --color-line-strong: #3a4641;
+    --color-accent: #0f766e;
+    --color-accent-strong: #0b5f58;
+    --color-accent-soft: #123a35;
+    --color-accent-text: #5eead4;
+    --color-streak: #fbbf24;
+    --color-streak-soft: #3a2a0e;
+    --color-mark: #f4c152;
+    --color-mark-soft: #3a2f16;
+    --color-danger: #f08a74;
+    --color-danger-soft: #3a211b;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-float: 0 24px 48px rgb(0 0 0 / 0.45);
+  }
+}
+
+/* /design에서 라이트 모드를 미리 볼 때 쓰는 강제 테마 */
+.theme-light {
+  color-scheme: light;
+  --color-paper: #f5f7f4;
+  --color-surface: #ffffff;
+  --color-ink: #17211e;
+  --color-muted: #62706b;
+  --color-line: #dde3df;
+  --color-line-strong: #c5cfc9;
+  --color-accent: #0f766e;
+  --color-accent-strong: #0b5f58;
+  --color-accent-soft: #e1f3ef;
+  --color-accent-text: #0b5f58;
+  --color-streak: #b45309;
+  --color-streak-soft: #fff2da;
+  --color-mark: #f6c453;
+  --color-mark-soft: #fff7dd;
+  --color-danger: #b8482f;
+  --color-danger-soft: #fbe9e4;
+  --shadow-card: 0 1px 2px rgb(22 33 30 / 0.04), 0 8px 24px rgb(22 33 30 / 0.04);
+  --shadow-float: 0 24px 48px rgb(22 33 30 / 0.14);
+}
+
+/* /design에서 다크 모드를 미리 볼 때 쓰는 강제 테마 */
+.theme-dark {
+  color-scheme: dark;
+  --color-paper: #0e1412;
+  --color-surface: #161d1a;
+  --color-ink: #e9efec;
+  --color-muted: #9aa8a2;
+  --color-line: #29322e;
+  --color-line-strong: #3a4641;
+  --color-accent: #0f766e;
+  --color-accent-strong: #0b5f58;
+  --color-accent-soft: #123a35;
+  --color-accent-text: #5eead4;
+  --color-streak: #fbbf24;
+  --color-streak-soft: #3a2a0e;
+  --color-mark: #f4c152;
+  --color-mark-soft: #3a2f16;
+  --color-danger: #f08a74;
+  --color-danger-soft: #3a211b;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-float: 0 24px 48px rgb(0 0 0 / 0.45);
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
   text-rendering: optimizeLegibility;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+pre,
+code {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+@layer base {
+  ::selection {
+    background: var(--color-mark);
+    color: var(--color-ink);
+  }
+
+  button,
+  [type="button"],
+  [type="submit"] {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  a,
+  button {
+    transition:
+      color 120ms ease,
+      background-color 120ms ease,
+      border-color 120ms ease,
+      opacity 120ms ease;
+  }
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-text);
   outline-offset: 2px;
 }
 
+/* iOS 홈 인디케이터 영역을 침범하지 않는 하단 탭 */
+.safe-bottom {
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+
+summary.summary-clean {
+  list-style: none;
+}
+
+summary.summary-clean::-webkit-details-marker {
+  display: none;
+}
+
+[data-tab][data-active],
+[data-nav][data-active] {
+  color: var(--color-accent-text);
+}
+
+[data-tab][data-active] {
+  font-weight: 500;
+}
+
+[data-tab][data-active] svg {
+  stroke-width: 2;
+}
+
+/* 카드가 바뀔 때 짧게 떠오른다. HTMX 스왑마다 재생된다. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  #review-root > *,
+  #quiz-root > * {
+    animation: rise 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-[data-tab][data-active] {
-  color: var(--color-accent);
-  font-weight: 500;
 }

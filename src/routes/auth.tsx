@@ -28,7 +28,7 @@ auth.get('/login', (c) => {
         {googleReady ? (
           <a
             href="/auth/google"
-            class="flex w-full items-center justify-center rounded border border-line bg-surface px-4 py-3 text-sm font-medium hover:border-accent"
+            class="flex w-full items-center justify-center rounded-xl border border-line bg-surface px-4 py-3 text-sm font-medium hover:border-accent-text"
           >
             Google로 계속하기
           </a>
@@ -38,7 +38,7 @@ auth.get('/login', (c) => {
           <form method="post" action="/auth/dev">
             <button
               type="submit"
-              class="w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+              class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
             >
               로컬 개발 계정으로 시작
             </button>
@@ -46,7 +46,7 @@ auth.get('/login', (c) => {
         ) : null}
 
         {!googleReady && !devLogin ? (
-          <p class="rounded border border-line bg-surface p-4 text-sm leading-6 text-muted">
+          <p class="rounded-xl border border-line bg-surface p-4 text-sm leading-6 text-muted">
             로그인 수단이 설정되지 않았습니다. <code class="text-ink">.dev.vars</code>에{' '}
             <code class="text-ink">DEV_LOGIN=true</code>를 넣거나 Google OAuth 키를 설정하세요.
           </p>

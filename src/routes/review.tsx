@@ -3,8 +3,9 @@ import type { Grade } from 'ts-fsrs';
 import type { Env, User } from '../types';
 import { Layout } from '../components/layout';
 import { localDate } from '../lib/time';
-import { previewIntervals, type Scheduled } from '../lib/srs';
-import { blankOut, diffChars, gradeAnswer, type GradeResult } from '../lib/grade';
+import { formatSpan, previewIntervals, type Scheduled } from '../lib/srs';
+import { blankOut, diffChars, gradeAnswer, normalize, type GradeResult } from '../lib/grade';
+import { ratingFromQuiz } from '../lib/rating';
 import { clampResponseMs } from '../lib/quota';
 import { DEFAULT_REVIEW_RATIOS, selectNextType } from '../lib/session';
 import { planReasonText } from '../lib/plan-text';
@@ -12,6 +13,7 @@ import { parseExtraExamples, parseJsonList } from '../lib/word-meta';
 import {
   ensureUnlocks,
   getCardForReview,
+  getMeaningChoices,
   getProgress,
   maybeSuspendLeech,
   maybeUnlockCloze,
@@ -48,7 +50,7 @@ import {
 
 const review = new Hono<Env>();
 
-type Stage = 'intro' | 'front' | 'back' | 'result';
+type Stage = 'intro' | 'choice' | 'front' | 'back' | 'result';
 
 review.get('/review', async (c) => {
   const user = c.get('user');
@@ -59,6 +61,7 @@ review.get('/review', async (c) => {
   if (c.req.query('mode') === 'weak') {
     const ctx = await weakContext(c.env.DB, user, now);
     const card = await pickWeakNext(c.env.DB, user, ctx, now);
+    const choices = card ? await choicesFor(c.env.DB, user.id, card) : null;
 
     return c.html(
       <Layout title="취약 단어" user={user}>
@@ -68,6 +71,7 @@ review.get('/review', async (c) => {
               fsrsParams={user.fsrs_params}
               card={card}
               stage={initialStage(card)}
+              choices={choices}
               prog={ctx.prog}
               now={now}
               source="weak"
@@ -94,6 +98,9 @@ review.get('/review', async (c) => {
 
   const ctx = await planContext(c.env.DB, user, now);
   const picked = await pickNext(c.env.DB, user, ctx.row, ctx.progress, now);
+  const choices = picked
+    ? await choicesFor(c.env.DB, user.id, picked.card)
+    : null;
 
   return c.html(
     <Layout title="학습" user={user}>
@@ -103,6 +110,7 @@ review.get('/review', async (c) => {
             fsrsParams={user.fsrs_params}
             card={picked.card}
             stage={initialStage(picked.card)}
+            choices={choices}
             prog={ctx.progress}
             plan={ctx.plan}
             wrapup={picked.wrapup}
@@ -129,6 +137,7 @@ review.post('/review/next', async (c) => {
   if (source === 'weak') {
     const ctx = await weakContext(c.env.DB, user, now);
     const next = await pickWeakNext(c.env.DB, user, ctx, now);
+    const choices = next ? await choicesFor(c.env.DB, user.id, next) : null;
 
     return c.html(
       next ? (
@@ -136,6 +145,7 @@ review.post('/review/next', async (c) => {
           fsrsParams={user.fsrs_params}
           card={next}
           stage={initialStage(next)}
+          choices={choices}
           prog={ctx.prog}
           now={now}
           source="weak"
@@ -153,6 +163,9 @@ review.post('/review/next', async (c) => {
 
   const ctx = await planContext(c.env.DB, user, now);
   const picked = await pickNext(c.env.DB, user, ctx.row, ctx.progress, now);
+  const choices = picked
+    ? await choicesFor(c.env.DB, user.id, picked.card)
+    : null;
 
   return c.html(
     picked ? (
@@ -160,6 +173,7 @@ review.post('/review/next', async (c) => {
         fsrsParams={user.fsrs_params}
         card={picked.card}
         stage={initialStage(picked.card)}
+        choices={choices}
         prog={ctx.progress}
         plan={ctx.plan}
         wrapup={picked.wrapup}
@@ -184,6 +198,7 @@ review.post('/review/:id/hide', async (c) => {
   const source = parseSource(body['source']);
 
   const now = new Date();
+  const choices = await choicesFor(c.env.DB, user.id, card);
   const normalCtx = source === 'weak' ? null : await planContext(c.env.DB, user, now);
   const prog = normalCtx
     ? normalCtx.progress
@@ -193,7 +208,8 @@ review.post('/review/:id/hide', async (c) => {
     <Fragment
       fsrsParams={user.fsrs_params}
       card={card}
-      stage="front"
+      stage="choice"
+      choices={choices}
       prog={prog}
       plan={normalCtx?.plan}
       now={now}
@@ -263,15 +279,28 @@ review.post('/review/:id/answer', async (c) => {
   const today = localDate(now, user.tz_offset_min);
   const responseMs = clampResponseMs(shownAt, now);
   const reviewKey = shownAt ? `${card.id}:${shownAt}` : null;
+  const rating = ratingFromQuiz({
+    correct: result.ok,
+    typo: result.typo,
+    responseMs,
+    cardType: card.card_type,
+  });
 
   const saved = await saveReview(
     c.env.DB,
     user.id,
     card,
-    (result.ok ? 3 : 1) as Grade,
+    rating,
     now,
     today,
-    { answer, responseMs, source, reviewKey, fsrsParams: user.fsrs_params }
+    {
+      answer,
+      responseMs,
+      source,
+      reviewKey,
+      gradingSource: 'server',
+      fsrsParams: user.fsrs_params,
+    }
   );
 
   if (saved) {
@@ -296,12 +325,79 @@ review.post('/review/:id/answer', async (c) => {
       now={now}
       answer={answer}
       result={result}
+      saved={saved}
       source={source}
     />
   );
 });
 
-/** 영→한: 평점 저장 → 다음 카드 */
+/** 영→한: 객관식 선택을 채점하고 즉시 저장 */
+review.post('/review/:id/choice', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.text('로그인이 필요합니다.', 401);
+
+  const card = await getCardForReview(c.env.DB, user.id, c.req.param('id'));
+  if (!card) return c.text('카드를 찾을 수 없습니다.', 404);
+  if (card.card_type !== 'recognition') {
+    return c.text('잘못된 요청입니다.', 400);
+  }
+
+  const body = await c.req.parseBody();
+  const choice = String(body['choice'] ?? '').trim();
+  if (!choice) return c.text('답을 선택해 주세요.', 400);
+
+  const shownAt = typeof body['shown_at'] === 'string' ? body['shown_at'] : undefined;
+  const source = parseSource(body['source']);
+
+  const now = new Date();
+  const today = localDate(now, user.tz_offset_min);
+  const responseMs = clampResponseMs(shownAt, now);
+  const reviewKey = shownAt ? `${card.id}:${shownAt}` : null;
+  const correct = normalize(choice) === normalize(card.meaning);
+  const rating = ratingFromQuiz({
+    correct,
+    responseMs,
+    cardType: card.card_type,
+  });
+
+  const saved = await saveReview(c.env.DB, user.id, card, rating, now, today, {
+    answer: choice,
+    responseMs,
+    source,
+    reviewKey,
+    gradingSource: 'server',
+    fsrsParams: user.fsrs_params,
+  });
+
+  if (saved) {
+    await afterSave(c.env.DB, user, card, saved, now);
+    if (source === 'review') {
+      await markPlanCompleted(c.env.DB, user, now);
+    }
+  }
+
+  const normalCtx = source === 'weak' ? null : await planContext(c.env.DB, user, now);
+  const prog = normalCtx
+    ? normalCtx.progress
+    : (await weakContext(c.env.DB, user, now)).prog;
+
+  return c.html(
+    <Fragment
+      fsrsParams={user.fsrs_params}
+      card={card}
+      stage="result"
+      prog={prog}
+      plan={normalCtx?.plan}
+      now={now}
+      chosen={choice}
+      correct={correct}
+      saved={saved}
+      source={source}
+    />
+  );
+});
+
+/** 영→한: 자기평가 저장 → 다음 카드 (보기가 부족한 경우의 대체 경로) */
 review.post('/review/:id', async (c) => {
   const user = c.get('user');
   if (!user) return c.text('로그인이 필요합니다.', 401);
@@ -341,6 +437,7 @@ review.post('/review/:id', async (c) => {
   if (source === 'weak') {
     const ctx = await weakContext(c.env.DB, user, now);
     const next = await pickWeakNext(c.env.DB, user, ctx, now);
+    const choices = next ? await choicesFor(c.env.DB, user.id, next) : null;
 
     return c.html(
       next ? (
@@ -348,6 +445,7 @@ review.post('/review/:id', async (c) => {
           fsrsParams={user.fsrs_params}
           card={next}
           stage={initialStage(next)}
+          choices={choices}
           prog={ctx.prog}
           now={now}
           source="weak"
@@ -365,6 +463,9 @@ review.post('/review/:id', async (c) => {
 
   const ctx = await planContext(c.env.DB, user, now);
   const picked = await pickNext(c.env.DB, user, ctx.row, ctx.progress, now);
+  const choices = picked
+    ? await choicesFor(c.env.DB, user.id, picked.card)
+    : null;
 
   return c.html(
     picked ? (
@@ -372,6 +473,7 @@ review.post('/review/:id', async (c) => {
         fsrsParams={user.fsrs_params}
         card={picked.card}
         stage={initialStage(picked.card)}
+        choices={choices}
         prog={ctx.progress}
         plan={ctx.plan}
         wrapup={picked.wrapup}
@@ -390,7 +492,19 @@ function parseSource(value: unknown): ReviewSource {
 
 function initialStage(card: QueueCard): Stage {
   if (card.card_type !== 'recognition') return 'front';
-  return card.reps === 0 ? 'intro' : 'front';
+  // 처음 보는 단어는 뜻을 먼저 소개하고, 복습은 곧바로 4지선다로 묻는다.
+  return card.reps === 0 ? 'intro' : 'choice';
+}
+
+/** 영→한 카드의 4지선다 보기. 보기가 2개 미만이면 null. */
+async function choicesFor(
+  db: D1Database,
+  userId: string,
+  card: QueueCard
+): Promise<string[] | null> {
+  if (card.card_type !== 'recognition') return null;
+  const choices = await getMeaningChoices(db, userId, card.word_id, card.meaning);
+  return choices.length >= 2 ? choices : null;
 }
 
 async function progressFor(db: D1Database, user: User, now: Date): Promise<Progress> {
@@ -584,6 +698,10 @@ function Fragment(props: {
   now: Date;
   answer?: string;
   result?: GradeResult;
+  saved?: Scheduled | null;
+  choices?: string[] | null;
+  chosen?: string;
+  correct?: boolean;
   responseMs?: number | null;
   reviewKey?: string | null;
   source?: ReviewSource;
@@ -596,15 +714,15 @@ function Fragment(props: {
     <>
       {props.plan ? <PlanSummary plan={props.plan} /> : null}
       {props.wrapup ? (
-        <p class="mb-2 text-xs font-medium text-accent">마무리 복습</p>
+        <p class="mb-2 text-xs font-medium text-accent-text">마무리 복습</p>
       ) : null}
 
       <div class="flex items-baseline justify-between text-sm text-muted">
         <span>{props.prog.done}장 완료</span>
         <span>{props.prog.remaining}장 남음</span>
       </div>
-      <div class="mt-2 h-1 w-full bg-line">
-        <div class="h-1 bg-accent transition-[width]" style={`width:${pct}%`}></div>
+      <div class="mt-2 h-1 overflow-hidden rounded-full bg-line">
+        <div class="h-1 rounded-full bg-accent transition-[width]" style={`width:${pct}%`}></div>
       </div>
 
       <div class="mt-10">{CardView({ ...props, source })}</div>
@@ -635,12 +753,32 @@ function CardView(props: {
   now: Date;
   answer?: string;
   result?: GradeResult;
+  saved?: Scheduled | null;
+  choices?: string[] | null;
+  chosen?: string;
+  correct?: boolean;
   responseMs?: number | null;
   reviewKey?: string | null;
   source: ReviewSource;
 }) {
   const type = props.card.card_type;
   const shownAt = props.now.toISOString();
+
+  if (type === 'recognition') {
+    if (props.stage === 'result') {
+      return (
+        <ChoiceResult
+          card={props.card}
+          chosen={props.chosen ?? ''}
+          correct={props.correct ?? false}
+          saved={props.saved ?? null}
+          now={props.now}
+          source={props.source}
+        />
+      );
+    }
+    return <RecognitionCard {...props} shownAt={shownAt} />;
+  }
 
   if (type === 'recall' || type === 'cloze' || type === 'listening') {
     if (props.stage === 'result') {
@@ -649,6 +787,8 @@ function CardView(props: {
           card={props.card}
           answer={props.answer ?? ''}
           result={props.result!}
+          saved={props.saved ?? null}
+          now={props.now}
           source={props.source}
         />
       );
@@ -665,7 +805,7 @@ function CardView(props: {
     );
   }
 
-  return <RecognitionCard {...props} shownAt={shownAt} />;
+  return null;
 }
 
 function RecognitionCard(props: {
@@ -673,18 +813,26 @@ function RecognitionCard(props: {
   stage: Stage;
   now: Date;
   shownAt: string;
+  choices?: string[] | null;
   responseMs?: number | null;
   reviewKey?: string | null;
   fsrsParams?: number[] | null;
   source: ReviewSource;
 }) {
   const { card, stage } = props;
+  const hasChoices = Boolean(props.choices && props.choices.length >= 2);
 
   return (
-    <article class="rounded-sm border border-line border-b-2 border-b-line bg-surface">
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-16">
         <p class="text-xs text-muted">
-          {stage === 'intro' ? '새 단어' : stage === 'back' ? '정답' : '뜻을 떠올려 보세요'}
+          {stage === 'intro'
+            ? '새 단어'
+            : stage === 'choice' && hasChoices
+              ? '뜻을 고르세요'
+              : stage === 'back'
+                ? '정답'
+                : '뜻을 떠올려 보세요'}
         </p>
 
         <p class="mt-4 font-word text-4xl leading-tight tracking-tight sm:text-5xl">
@@ -695,10 +843,22 @@ function RecognitionCard(props: {
           <p class="mt-1 text-sm text-muted">{card.pronunciation}</p>
         ) : null}
 
-        <SpeakButton term={card.term} />
+        {stage === 'intro' || stage === 'choice' ? <SpeakButton term={card.term} /> : null}
       </div>
 
       {stage === 'intro' ? <IntroBody card={card} source={props.source} /> : null}
+      {stage === 'choice' ? (
+        hasChoices ? (
+          <ChoiceBody
+            card={card}
+            choices={props.choices!}
+            shownAt={props.shownAt}
+            source={props.source}
+          />
+        ) : (
+          <FrontBody card={card} shownAt={props.shownAt} source={props.source} />
+        )
+      ) : null}
       {stage === 'front' ? (
         <FrontBody card={card} shownAt={props.shownAt} source={props.source} />
       ) : null}
@@ -716,11 +876,108 @@ function RecognitionCard(props: {
   );
 }
 
+/** 영→한 4지선다. 선택 즉시 서버로 보내 채점한다. */
+function ChoiceBody(props: {
+  card: QueueCard;
+  choices: string[];
+  shownAt: string;
+  source: ReviewSource;
+}) {
+  return (
+    <form
+      hx-post={`/review/${props.card.id}/choice`}
+      hx-target="#review-root"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button"
+      class="border-t border-line px-6 py-6 sm:px-10"
+    >
+      <input type="hidden" name="shown_at" value={props.shownAt} />
+      <input type="hidden" name="source" value={props.source} />
+
+      <div class="grid gap-2">
+        {props.choices.map((choice, index) => (
+          <button
+            type="submit"
+            name="choice"
+            value={choice}
+            data-choice={String(index + 1)}
+            class="flex min-h-12 items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3 text-left text-sm transition-colors hover:border-accent-text hover:text-accent-text"
+          >
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-xs text-muted">
+              {index + 1}
+            </span>
+            <span>{choice}</span>
+          </button>
+        ))}
+      </div>
+
+      <p class="mt-3 text-center text-xs text-muted">1 · 2 · 3 · 4</p>
+    </form>
+  );
+}
+
+/** 영→한 객관식 채점 결과 */
+function ChoiceResult(props: {
+  card: QueueCard;
+  chosen: string;
+  correct: boolean;
+  saved: Scheduled | null;
+  now: Date;
+  source: ReviewSource;
+}) {
+  const next = props.saved
+    ? formatSpan(new Date(props.saved.due_at).getTime() - props.now.getTime())
+    : null;
+
+  return (
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
+      <div class="px-6 py-10 text-center sm:px-10">
+        <p class={`text-sm font-medium ${props.correct ? 'text-accent-text' : 'text-danger'}`}>
+          {props.correct ? '정답' : '오답'}
+        </p>
+
+        <p class="mt-4 font-word text-3xl leading-tight tracking-tight sm:text-4xl">
+          {props.card.term}
+        </p>
+        <p class="mt-2 text-lg">{props.card.meaning}</p>
+
+        {props.correct ? null : (
+          <p class="mt-2 text-sm text-muted">내 답: {props.chosen}</p>
+        )}
+
+        <SpeakButton term={props.card.term} />
+      </div>
+
+      <div class="border-t border-line px-6 py-6 sm:px-10">
+        <WordContext card={props.card} />
+        {props.card.note ? <Mnemonic note={props.card.note} /> : null}
+      </div>
+
+      <div class="border-t border-line px-6 py-5 sm:px-10">
+        {next ? (
+          <p class="mb-3 text-center text-xs text-muted">다음 복습 {next}</p>
+        ) : null}
+        <button
+          type="button"
+          hx-post="/review/next"
+          hx-vals={JSON.stringify({ source: props.source })}
+          hx-target="#review-root"
+          hx-swap="innerHTML"
+          data-act="next"
+          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
+        >
+          계속
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function RecallPrompt(props: { card: QueueCard; shownAt: string; source: ReviewSource }) {
   const blanked = blankOut(props.card.example, props.card.term);
 
   return (
-    <article class="rounded-sm border border-line border-b-2 border-b-line bg-surface">
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
         <p class="text-xs text-muted">뜻을 보고 영어로 쓰세요</p>
         <p class="mt-4 text-2xl leading-snug">{props.card.meaning}</p>
@@ -746,11 +1003,11 @@ function RecallPrompt(props: { card: QueueCard; shownAt: string; source: ReviewS
           autocorrect="off"
           spellcheck={false}
           placeholder="영어 단어"
-          class="w-full rounded border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
+          class="w-full rounded-xl border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -763,7 +1020,7 @@ function ClozePrompt(props: { card: QueueCard; shownAt: string; source: ReviewSo
   const blanked = blankOut(props.card.example, props.card.term);
 
   return (
-    <article class="rounded-sm border border-line border-b-2 border-b-line bg-surface">
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
         <p class="text-xs text-muted">빈칸에 들어갈 단어를 쓰세요</p>
 
@@ -774,7 +1031,7 @@ function ClozePrompt(props: { card: QueueCard; shownAt: string; source: ReviewSo
         )}
 
         <details class="mt-6 text-left sm:inline-block">
-          <summary class="cursor-pointer text-xs text-muted underline-offset-4 hover:text-accent hover:underline">
+          <summary class="cursor-pointer text-xs text-muted underline-offset-4 hover:text-accent-text hover:underline">
             힌트: 뜻 보기
           </summary>
           <p class="mt-2 text-sm">{props.card.meaning}</p>
@@ -799,11 +1056,11 @@ function ClozePrompt(props: { card: QueueCard; shownAt: string; source: ReviewSo
           autocorrect="off"
           spellcheck={false}
           placeholder="빈칸에 들어갈 단어"
-          class="w-full rounded border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
+          class="w-full rounded-xl border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -818,14 +1075,14 @@ function ListeningPrompt(props: {
   source: ReviewSource;
 }) {
   return (
-    <article class="rounded-sm border border-line border-b-2 border-b-line bg-surface">
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
       <div class="px-6 py-12 text-center sm:px-10 sm:py-14">
         <p class="text-xs text-muted">듣고 철자를 입력하세요</p>
 
         <button
           type="button"
           data-speak={props.card.term}
-          class="mt-6 inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent-soft px-6 py-4 text-base font-medium text-accent hover:opacity-90"
+          class="mt-6 inline-flex items-center gap-2 rounded-full border border-accent-text/40 bg-accent-soft px-6 py-4 text-base font-medium text-accent-text hover:bg-accent/10"
         >
           🔊 발음 듣기
         </button>
@@ -854,11 +1111,11 @@ function ListeningPrompt(props: {
           autocorrect="off"
           spellcheck={false}
           placeholder="듣고 영어로 쓰세요"
-          class="w-full rounded border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
+          class="w-full rounded-xl border border-line bg-surface px-3 py-3 text-center font-word text-lg placeholder:font-sans placeholder:text-sm placeholder:text-muted/70"
         />
         <button
           type="submit"
-          class="mt-3 w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           확인
         </button>
@@ -884,7 +1141,7 @@ function BlankedSentence(props: { text: string }) {
         <>
           {part}
           {i < parts.length - 1 ? (
-            <span class="mx-1 inline-block min-w-14 border-b-2 border-accent/40 align-baseline">
+            <span class="mx-1 inline-block min-w-14 border-b-2 border-accent-text/40 align-baseline">
               &nbsp;
             </span>
           ) : null}
@@ -898,16 +1155,21 @@ function ProductionResult(props: {
   card: QueueCard;
   answer: string;
   result: GradeResult;
+  saved: Scheduled | null;
+  now: Date;
   source: ReviewSource;
 }) {
   const { card, result } = props;
   const chars = diffChars(props.answer, card.term);
+  const next = props.saved
+    ? formatSpan(new Date(props.saved.due_at).getTime() - props.now.getTime())
+    : null;
 
   return (
-    <article class="rounded-sm border border-line border-b-2 border-b-line bg-surface">
+    <article class="rounded-lg border border-line border-b-2 border-b-line bg-surface shadow-card">
       <div class="px-6 py-10 text-center sm:px-10">
         {result.ok ? (
-          <p class="text-sm font-medium text-accent">{result.typo ? '정답 (철자 확인)' : '정답'}</p>
+          <p class="text-sm font-medium text-accent-text">{result.typo ? '정답 (철자 확인)' : '정답'}</p>
         ) : (
           <p class="text-sm font-medium text-danger">오답</p>
         )}
@@ -938,6 +1200,9 @@ function ProductionResult(props: {
       </div>
 
       <div class="border-t border-line px-6 py-5 sm:px-10">
+        {next ? (
+          <p class="mb-3 text-center text-xs text-muted">다음 복습 {next}</p>
+        ) : null}
         <button
           type="button"
           hx-post="/review/next"
@@ -945,7 +1210,7 @@ function ProductionResult(props: {
           hx-target="#review-root"
           hx-swap="innerHTML"
           data-act="next"
-          class="w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           계속
         </button>
@@ -1038,7 +1303,7 @@ function IntroBody(props: { card: QueueCard; source: ReviewSource }) {
           hx-vals={JSON.stringify({ source: props.source })}
           hx-target="#review-root"
           hx-swap="innerHTML"
-          class="w-full rounded bg-accent px-4 py-3 text-sm font-medium text-white hover:opacity-90"
+          class="w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white hover:bg-accent-strong"
         >
           가리고 확인하기
         </button>
@@ -1057,7 +1322,7 @@ function FrontBody(props: { card: QueueCard; shownAt: string; source: ReviewSour
         hx-vals={JSON.stringify({ shown_at: props.shownAt, source: props.source })}
         hx-target="#review-root"
         hx-swap="innerHTML"
-        class="rounded border border-line px-6 py-3 text-sm font-medium hover:border-accent"
+        class="rounded-xl border border-line px-6 py-3 text-sm font-medium hover:border-accent-text"
       >
         뜻 보기
       </button>
@@ -1145,7 +1410,7 @@ function BackBody(props: {
           hx-vals={JSON.stringify(easyVals)}
           hx-target="#review-root"
           hx-swap="innerHTML"
-          class="mt-3 w-full text-center text-xs text-muted underline-offset-4 hover:text-accent hover:underline"
+          class="mt-3 w-full text-center text-xs text-muted underline-offset-4 hover:text-accent-text hover:underline"
         >
           아주 쉬웠어요 · 다음 복습 {preview[4]}
         </button>
@@ -1167,9 +1432,9 @@ function RateButton(props: {
   source: ReviewSource;
 }) {
   const tones: Record<string, string> = {
-    again: 'border-danger/40 text-danger hover:bg-danger/5',
+    again: 'border-danger/40 text-danger hover:bg-danger-soft',
     hard: 'border-line text-muted hover:border-ink/30',
-    good: 'border-accent bg-accent text-white hover:opacity-90',
+    good: 'border-accent-text bg-accent text-white hover:bg-accent-strong',
   };
 
   const vals: Record<string, unknown> = { rating: props.rating, source: props.source };
@@ -1185,7 +1450,7 @@ function RateButton(props: {
       hx-vals={JSON.stringify(vals)}
       hx-target="#review-root"
       hx-swap="innerHTML"
-      class={`rounded border px-3 py-3 text-center transition-colors ${tones[props.tone]}`}
+      class={`rounded-xl border px-3 py-3 text-center transition-colors ${tones[props.tone]}`}
     >
       <span class="block text-sm font-medium leading-tight">{props.label}</span>
       <span class={`mt-1 block text-xs ${props.tone === 'good' ? 'text-white/70' : 'text-muted'}`}>
@@ -1200,7 +1465,7 @@ function SpeakButton(props: { term: string }) {
     <button
       type="button"
       data-speak={props.term}
-      class="mt-4 text-xs text-muted underline-offset-4 hover:text-accent hover:underline"
+      class="mt-4 text-xs text-muted underline-offset-4 hover:text-accent-text hover:underline"
     >
       발음 듣기
     </button>
@@ -1238,13 +1503,13 @@ function WeakDone(props: {
       <div class="mt-8 flex justify-center gap-2">
         <a
           href="/hard?tab=weak"
-          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
+          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
         >
           취약 단어 목록
         </a>
         <a
           href="/"
-          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
+          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
         >
           대시보드로
         </a>
@@ -1277,13 +1542,13 @@ function Done(props: {
       <div class="mt-8 flex justify-center gap-2">
         <a
           href="/hard?tab=weak"
-          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
+          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
         >
           취약 단어
         </a>
         <a
           href="/"
-          class="rounded border border-line px-5 py-3 text-sm hover:border-accent"
+          class="rounded-xl border border-line px-5 py-3 text-sm hover:border-accent-text"
         >
           대시보드로
         </a>

@@ -164,7 +164,7 @@ mastered(word):
 
 | 유형 | 자극 | 사용자가 하는 일 | 생성 시점 |
 |---|---|---|---|
-| `recognition` | 영어 단어 | 뜻을 떠올린다 | 단어 생성 시 |
+| `recognition` | 영어 단어 | 4지선다에서 뜻을 고른다 | 단어 생성 시 |
 | `recall` | 한국어 뜻 | 철자를 입력한다 | 아래 승급 조건 |
 | `cloze` | 빈칸 문장 | 빈칸에 단어를 넣는다 | 아래 승급 조건 |
 | `listening` | 🔊 음성 | 듣고 철자를 입력한다 | 설정 활성화 + 아래 조건 |
@@ -225,6 +225,25 @@ listening:
 - TTS가 없는 기기에서는 안내 문구를 보여주고 “들리지 않아요”로 정답을 확인하게 한다.
   카드를 만들지 않는 것은 아니다. 설정에서 켜 둔 사용자는 다른 기기에서 그대로 쓸 수 있다.
 - 실제 음성 파일은 라이선스·용량 검토 후 `audio_url`로 대체한다.
+
+### 3.5 퀴즈 자동 평점
+
+사용자가 자기 기억을 평가하지 않는다. 정답 여부와 응답 시간으로 평점을 정한다.
+
+```text
+오답                         → Again (1)
+오타 허용                    → Hard (2)
+정답, response_ms > 8000     → Hard (2)
+정답, 3000 < response_ms <= 8000 → Good (3)
+정답, response_ms <= 3000    → 생산형(recall/cloze/listening)이면 Easy (4)
+                               recognition이면 Good (3)
+```
+
+- `recognition`은 4지선다다. 찍어서 맞힌 경우를 구분하기 위해 `Easy`를 주지 않는다.
+- 보기가 2개 미만인 단어는 기존 자기평가 화면으로 폴백한다.
+- 응답 시간이 없으면 `Good`으로 둔다.
+- 객관식 보기는 정답 뜻 + 사용자의 다른 단어 뜻 3개다. 정답은 서버가 문자열로 비교한다.
+- `recognition`의 `grading_source`는 자동 채점이므로 `server`다. 폴백 자기평가만 `self`다.
 
 ---
 
@@ -551,7 +570,7 @@ firstAttemptAccuracy =
 - `response_ms`의 중앙값(p50)과 p90을 유형별로 표시한다.
 - 최근 30일, 표본 20건 미만이면 “표본 부족”.
 - 5분을 초과한 값은 쓰기 시점에 300,000ms로 clamp한다.
-- 인식 카드는 “자극 → 뜻 보기”까지, 입력 카드는 “자극 → 제출”까지를 잰다.
+- 인식 카드는 “자극 → 보기 선택”까지, 입력 카드는 “자극 → 제출”까지를 잰다.
   뜻을 본 뒤 평점을 누르는 시간은 학습 시간이 아니므로 제외한다.
 
 ### 7.4 기억 유지율
@@ -651,9 +670,9 @@ estimatedMinutes = ceil(
 | 컬럼 | 타입 | 설명 | 백필 |
 |---|---|---|---|
 | `question_type` | TEXT | `recognition` / `recall` / `cloze` / `listening` | `cards.card_type` |
-| `answer` | TEXT | 사용자 입력 답안. 인식 카드는 NULL | — |
+| `answer` | TEXT | 사용자 선택/입력 답안 | — |
 | `is_correct` | INTEGER | `rating >= 2`이면 1 | `rating >= 2` |
-| `grading_source` | TEXT | `self` (인식) / `server` (입력) | 타입에서 유도 |
+| `grading_source` | TEXT | `self` (폴백 자기평가) / `server` (객관식·입력 자동채점) | 타입에서 유도 |
 | `response_ms` | INTEGER | 자극 → 응답 시간. 0~300000 | NULL |
 | `review_key` | TEXT | `card_id:shown_at`. 같은 프롬프트 재전송 방지 | NULL (기존 리뷰) |
 | `attempt_seq` | INTEGER | 같은 카드·같은 날짜의 시도 순번 (1부터) | 윈도 함수 |
@@ -665,7 +684,7 @@ estimatedMinutes = ceil(
 
 ```text
 1. 카드 렌더 시 서버 시각을 hidden 필드(shown_at)로 넣는다.
-2. 사용자가 뜻 보기 / 제출 / 평점을 누르면 서버가 response_ms를 계산한다.
+2. 사용자가 보기를 고르거나 답을 제출하면 서버가 response_ms를 계산한다.
 3. schedule()로 다음 FSRS 상태를 계산한다.
 4. cards UPDATE + reviews INSERT를 한 트랜잭션으로 실행한다.
 5. 승급·leech 검사를 best-effort로 실행한다.
@@ -675,7 +694,7 @@ estimatedMinutes = ceil(
 - `shown_at`이 없으면 `response_ms = NULL`. NULL을 허용한다.
 - 클라이언트 시각은 신뢰하지 않는다. 서버 시각만 쓴다.
 - `question_type`은 `cards.card_type`에서 복사한다. 조인을 줄이고 로그를 불변으로 만들기 위해서다.
-- `grading_source`: `recognition`은 `self`, 나머지는 `server`.
+- `grading_source`: 자동채점은 `server`. 보기가 부족해 자기평가로 폴백한 `recognition`만 `self`.
 - `review_key`: `${card_id}:${shown_at}`. 같은 프롬프트에서 나온 재전송을 식별한다.
   서버가 렌더 시 발급한 `shown_at`을 쓰므로 클라이언트가 임의로 새 키를 만들 수 없다.
 - `attempt_seq`: 같은 `card_id` + `local_date`의 기존 리뷰 수 + 1.
@@ -773,9 +792,9 @@ UPDATE reviews
 ### 10.3 앱 종료·복구
 
 - 학습 상태는 **응답 1건마다** 저장한다. 세션 전체를 메모리에 들고 있지 않는다.
-- 뜻 보기 전에 종료: 리뷰 없음. 카드는 그대로 due.
-- 뜻 본 뒤 평점 전에 종료: 리뷰 없음. 다시 열면 같은 카드가 나온다.
-- 평점/제출 후 종료: 리뷰 저장됨. 다시 열면 다음 카드가 나온다.
+- 보기를 고르기 전에 종료: 리뷰 없음. 카드는 그대로 due.
+- 정답을 확인한 뒤 다음 카드로 넘어가기 전에 종료: 리뷰는 이미 저장됨.
+- 제출 후 종료: 리뷰 저장됨. 다시 열면 다음 카드가 나온다.
 - `daily_plans` 덕분에 하루 계획은 재접속해도 유지된다.
 - 클라이언트에 저장하는 학습 상태는 없다. 오프라인 큐도 M6 범위 밖이다.
 
@@ -967,7 +986,8 @@ ALTER TABLE users ADD COLUMN fsrs_params_updated_at TEXT;
 |---|---|---|---|
 | GET | `/` | 오늘 계획, 예상 시간, 취약 단어 수, known/mastered 단어 수 | M6.3 |
 | GET | `/review` | 계획 헤더, `?mode=weak` 지원 | M6.2/M6.3 |
-| POST | `/review/:id/reveal` | `response_ms`, `review_key` hidden 필드 포함 | M6.1 |
+| POST | `/review/:id/choice` | 영→한 4지선다 채점, `response_ms`, `review_key`, `source` 기록 | M6.7 |
+| POST | `/review/:id/reveal` | 보기 부족 시 폴백. `response_ms`, `review_key` hidden 필드 포함 | M6.1 |
 | POST | `/review/:id/answer` | `response_ms`, `review_key`, `source`, `attempt_seq` 기록 | M6.1 |
 | POST | `/review/:id` | 평점과 함께 `response_ms`, `review_key` 기록 | M6.1 |
 | GET | `/hard` | 취약/격리/관찰 탭 | M6.2 |
@@ -1008,7 +1028,11 @@ ALTER TABLE users ADD COLUMN fsrs_params_updated_at TEXT;
         ubiquitous
         /juːˈbɪkwɪtəs/  🔊
 
-        [ 뜻 보기 ]
+        뜻을 고르세요
+        A. 어디에나 있는
+        B. 드문
+        C. 위험한
+        D. 조용한
 ```
 
 - 상단에 현재 블록과 남은 양을 표시한다.
@@ -1116,8 +1140,8 @@ M6.1에서는 원자성·쿼터·정답률 테스트만 먼저 넣고, `weakScor
 ### 13.3 수동 테스트
 
 - KST 23:59와 00:01에 리뷰 → `local_date` 경계 확인.
-- 뜻 보기 전/후, 평점 후 앱 종료 → 복구 동작 확인.
-- 두 탭에서 같은 카드 평점 → 한 번만 저장.
+- 보기 선택 전/후, 제출 후 앱 종료 → 복구 동작 확인.
+- 두 탭에서 같은 카드 제출 → 한 번만 저장.
 - 듣기 켜기/끄기, TTS 없는 브라우저.
 - 오프라인에서 앱 셸 열기.
 - 모바일에서 입력 자동 대문자/맞춤법이 꺼져 있는지.
@@ -1138,7 +1162,7 @@ M6.1에서는 원자성·쿼터·정답률 테스트만 먼저 넣고, `weakScor
 
 ### 13.5 회귀 체크리스트
 
-- 영→한 카드: 소개 → 가리기 → 뜻 보기 → 평점
+- 영→한 카드: 소개 → 가리기 → 4지선다 → 정답/오답 → 다음 복습일
 - 한→영 카드: 뜻 → 입력 → 채점 → 정답/오타/오답 표시
 - 빈칸 카드: 예문 → 입력 → 채점
 - 승급: 4일/7일 조건, 기능어 제외

@@ -59,15 +59,18 @@ wordy/
     │   ├── csv.ts               # 파싱/직렬화
     │   └── time.ts              # 사용자 로컬 날짜 계산
     ├── components/
-    │   ├── layout.tsx           # <html> 껍데기, nav
-    │   ├── review-card.tsx      # 복습 카드 (앞/뒤)
-    │   └── ui.tsx               # 버튼, 배지 등 소품
+    │   └── layout.tsx           # <html> 껍데기, 헤더·하단 탭
     └── routes/
         ├── auth.tsx
+        ├── home.tsx
         ├── decks.tsx
         ├── review.tsx
+        ├── hard.tsx
         ├── stats.tsx
-        └── home.tsx
+        ├── quiz.tsx
+        ├── settings.tsx
+        ├── legal.tsx
+        └── design.tsx           # 디자인 시스템 참조 화면 (/design)
 ```
 
 > **ORM을 쓰지 않는 이유**: D1은 SQLite이고 쿼리가 10개 남짓입니다.
@@ -196,7 +199,7 @@ Workers **무료 플랜은 요청당 CPU 시간 10ms**입니다. PBKDF2 10만 �
 
 | 파일 | 역할 |
 |---|---|
-| `public/manifest.webmanifest` | 설치 정보. `display: standalone`, 테마 `#12694f` |
+| `public/manifest.webmanifest` | 설치 정보. `display: standalone`, 테마 `#0f766e` |
 | `public/icons/icon-{192,512}.png` | 마스커블 아이콘. `scripts/make-icons.mjs` 로 생성 (의존성 없음) |
 | `public/sw.js` | 앱 셸 캐시 + 오프라인 폴백 |
 | `public/offline.html` | 네트워크 실패 시 보여줄 정적 페이지 (스타일 인라인) |

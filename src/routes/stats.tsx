@@ -36,11 +36,11 @@ stats.get('/stats', async (c) => {
     <Layout title="통계" user={user}>
       <h1 class="text-2xl font-semibold">통계</h1>
 
-      <dl class="mt-6 grid grid-cols-2 gap-px border border-line bg-line">
-        <Cell label="오늘 학습" value={`${todayCount}`} unit="장" />
-        <Cell label="연속 학습" value={`${streakDays}`} unit="일" />
-        <Cell label="정답률 (30일)" value={`${accuracy}`} unit="%" />
-        <Cell label="외운 단어" value={`${learned}`} unit="개" />
+      <dl class="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line shadow-card">
+        <Cell label="오늘 학습" value={todayCount} unit="장" />
+        <Cell label="연속 학습" value={streakDays} unit="일" />
+        <Cell label="정답률 (30일)" value={accuracy} unit="%" />
+        <Cell label="외운 단어" value={learned} unit="개" />
       </dl>
 
       <p class="mt-2 text-xs leading-5 text-muted">
@@ -91,10 +91,10 @@ stats.get('/stats', async (c) => {
           영→한, 한→영, 빈칸 카드를 각각 가질 수 있습니다.
         </p>
         <div class="mt-4 flex gap-4">
-          <a href="/hard?tab=weak" class="text-sm text-accent hover:underline">
+          <a href="/hard?tab=weak" class="text-sm text-accent-text hover:underline">
             취약 단어 보기
           </a>
-          <a href="/hard?tab=leech" class="text-sm text-accent hover:underline">
+          <a href="/hard?tab=leech" class="text-sm text-accent-text hover:underline">
             격리된 단어 보기
           </a>
         </div>
@@ -103,12 +103,12 @@ stats.get('/stats', async (c) => {
   );
 });
 
-function Cell(props: { label: string; value: string; unit: string }) {
+function Cell(props: { label: string; value: number; unit: string }) {
   return (
     <div class="bg-surface px-4 py-5">
       <dt class="text-xs text-muted">{props.label}</dt>
       <dd class="mt-1 font-word text-2xl">
-        {props.value}
+        {props.value.toLocaleString('ko-KR')}
         <span class="ml-1 text-sm text-muted">{props.unit}</span>
       </dd>
     </div>

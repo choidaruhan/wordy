@@ -27,7 +27,7 @@ buildSync({
   logLevel: 'silent',
 });
 
-const { saveReview, getProgress, ensureUnlocks } = await import(
+const { saveReview, getProgress, ensureUnlocks, getMeaningChoices } = await import(
   pathToFileURL(join(bundleDir, 'db/review.js')).href
 );
 const { learnedCount, dailyStats, rangeSummary } = await import(
@@ -363,6 +363,32 @@ test('0004: 기존 리뷰를 보존하고 계측 컬럼을 백필한다', () => 
 
   const idempotencyIndexes = db.prepare(`PRAGMA index_list('reviews')`).all();
   assert.ok(idempotencyIndexes.some((i) => i.name === 'ux_reviews_user_review_key'));
+});
+
+test('getMeaningChoices: 정답 뜻과 다른 단어 뜻으로 4지선다 보기를 만든다', async () => {
+  const db = freshDb();
+  const database = d1(db);
+  seedUser(db);
+  seedDeck(db);
+  seedWord(db, { id: 'w1', term: 'abandon', meaning: '포기하다' });
+  seedWord(db, { id: 'w2', term: 'discover', meaning: '발견하다' });
+  seedWord(db, { id: 'w3', term: 'maintain', meaning: '유지하다' });
+  seedWord(db, { id: 'w4', term: 'choose', meaning: '선택하다' });
+
+  const choices = await getMeaningChoices(database, 'u1', 'w1', '포기하다');
+  assert.equal(choices.length, 4);
+  assert.ok(choices.includes('포기하다'));
+  assert.equal(new Set(choices).size, 4);
+
+  const single = freshDb();
+  const singleDb = d1(single);
+  seedUser(single);
+  seedDeck(single);
+  seedWord(single, { id: 'w1', term: 'abandon', meaning: '포기하다' });
+  assert.deepEqual(
+    await getMeaningChoices(singleDb, 'u1', 'w1', '포기하다'),
+    []
+  );
 });
 
 test('saveReview: 카드 상태와 리뷰 로그를 원자적으로 저장하고 중복을 막는다', async () => {

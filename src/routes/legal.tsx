@@ -102,7 +102,7 @@ legal.get('/privacy', (c) => {
 
       <Section title="9. 개인정보 보호책임자">
         <p>
-          이메일: <a href={`mailto:${SITE.email}`} class="text-accent hover:underline">{SITE.email}</a>
+          이메일: <a href={`mailto:${SITE.email}`} class="text-accent-text hover:underline">{SITE.email}</a>
         </p>
       </Section>
 
@@ -196,7 +196,7 @@ legal.get('/terms', (c) => {
 
       <Section title="10. 문의">
         <p>
-          이메일: <a href={`mailto:${SITE.email}`} class="text-accent hover:underline">{SITE.email}</a>
+          이메일: <a href={`mailto:${SITE.email}`} class="text-accent-text hover:underline">{SITE.email}</a>
         </p>
       </Section>
 
