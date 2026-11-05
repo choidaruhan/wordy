@@ -36,7 +36,11 @@
 | [docs/05-ui-routes.md](docs/05-ui-routes.md) | 라우트 목록, HTMX 인터랙션 명세 | |
 | [docs/06-learning-design.md](docs/06-learning-design.md) | **학습 설계 — 어떻게 외우게 할 것인가** | |
 | [docs/07-learning-engine.md](docs/07-learning-engine.md) | **M6 학습 엔진 명세 — 취약 단어·세션·적응형 배분** | M6.6 반영 |
-| [docs/08-design-system.md](docs/08-design-system.md) | 디자인 2.0 — 토큰·다크 모드·화면 설계, `/design` 참조 | 갱신 |
+| [docs/08-design-system.md](docs/08-design-system.md) | 앱 디자인 시스템 — 토큰·다크 모드·컴포넌트 | 갱신 |
+| [docs/09-system-overview.md](docs/09-system-overview.md) | **시스템 전체 정리 — 현재 `/play` + 레거시 `/review`** | 현재 코드 기준 |
+| [docs/10-m8-development-spec.md](docs/10-m8-development-spec.md) | **M8 개발 명세 — 학습 시스템 통합** | 제안 |
+| [docs/11-backup-restore.md](docs/11-backup-restore.md) | **D1 백업·복구 절차와 리허설** | 운영 |
+| [docs/12-release-checklist.md](docs/12-release-checklist.md) | **배포 전 QA·마이그레이션·롤백 체크리스트** | 운영 |
 
 ---
 
@@ -121,8 +125,15 @@ Google OAuth 리디렉션 URI에 `https://<your-domain>/auth/google/callback` �
 | `npm run db:local` | 로컬 D1 마이그레이션 |
 | `npm run db:remote` | 원격 D1 마이그레이션 |
 | `npm run typecheck` | 타입 검사 |
+| `npm run verify` | typecheck + test + migration 순서 + seed 검수 |
 | `npm test` | 쿼터·원자성·마이그레이션 테스트 |
+| `npm run check:migrations` | 마이그레이션 번호 연속성 검사 |
 | `npm run check:seed` | 시드 CSV 검수 |
+| `npm run check:integrity` | D1 학습 데이터 무결성 점검 |
+| `npm run analyze:ratings` | 평점 캘리브레이션 분석 |
+| `npm run db:backup` | 원격 D1 백업 |
+| `npm run db:backup:local` | 로컬 D1 백업 |
+| `npm run db:restore:drill` | 백업 복구 리허설 |
 | `npm run make:icons` | PWA 아이콘 재생성 |
 | `npm run deploy` | 빌드 + 배포 |
 
@@ -148,7 +159,23 @@ Google OAuth 리디렉션 URI에 `https://<your-domain>/auth/google/callback` �
 | M6.5 | 듣기 카드, 발음 설정, TTS 학습 | ✅ |
 | M6.6 | FSRS 리뷰 로그 내보내기, 사용자별 파라미터 | ✅ |
 | M6.7 | 영→한 4지선다, 응답 시간 기반 자동 평점, 자기평가 제거 | ✅ |
-| M7 | 디자인 2.0 — 딥 틸 토큰, 다크 모드, `/design` 화면 설계 | ✅ |
+| M7 | 하루 목표 없는 플레이 세션, 한 판 5문제 | ✅ |
+| M8.1 | 학습 정책 엔진, `learning_mode`, 세션 상태·정책 스냅샷, 승급 카드 출제 | ✅ |
+| M8.2 | item 검증·트리거, 파생 세션 카운터, 세션 상태 전환, `/review` → `/play` | ✅ |
+| M8.3 | 설정 daily 항목 정리, `/play` 오늘 목표 카드 | ✅ |
+| P1.1 | 평점 신뢰도 계측 — prompt/first input/reliability 저장 | ✅ |
+| P1.2 | 취약 신뢰도·표본 수, 무결성 점검 CLI | ✅ |
+| P1.3 | CSRF Origin 검증, 보안 헤더, OAuth PKCE, 접근 제어 테스트 | ✅ |
+| P1.4 | IANA 시간대, DST 경계, 설정 시간대 입력 | ✅ |
+| P1.5 | 평점 캘리브레이션 분석 CLI, 유지율·신뢰도 구간 | ✅ |
+| P1.6 | 선택적 confidence UI, 1/5·항상 모드 | ✅ |
+| P1.7 | D1 기반 요청 제한, 429/Retry-After | ✅ |
+| P1.8 | D1 백업 스크립트, 복구 리허설, 운영 문서 | ✅ |
+| M10 | 오답 마무리(세션 내 재노출), 최대 2문제, FSRS 분리 | ✅ |
+| M11 | Word Mastery, 숙련도 분포 통계 | ✅ |
+| M12 | 학습 펄스·피로도, 주간 리포트, 최장 연속 학습 | ✅ |
+| Release | `verify`·`predeploy`, 마이그레이션 순서 검사, 릴리스 체크리스트 | ✅ |
+| UI | 퍼플 리디자인 — 토큰·다크 모드·학습 화면·디자인 시스템 | ✅ |
 
 ### M3에서 확인된 동작
 - **승급**: 영→한 카드가 `review` 상태 + `scheduled_days >= 4` 가 되면 한→영 카드 자동 생성
@@ -207,6 +234,15 @@ Google OAuth 리디렉션 URI에 `https://<your-domain>/auth/google/callback` �
 - 신규 단어는 뜻·예문 소개 → `[가리고 확인하기]` → 4지선다 순서입니다.
 - 보기가 2개 미만인 단어만 기존 자기평가 화면으로 폴백합니다.
 - 기존 `cards`/`reviews` 기록과 FSRS 일정은 그대로 유지됩니다. 스키마 변경은 없습니다.
+
+### 플레이 모드 (M7)
+- 홈의 `시작` 버튼으로 하루 목표 없이 한 판을 시작합니다. 홈에는 시작 버튼과 모드만 둡니다.
+- 기본 한 판은 5문제이며, 복습 대기 → 새 단어 순서로 섞습니다.
+- 모드: `quick`(섞어서) / `typing`(철자) / `cloze`(빈칸) / `listening`(듣기) / `weak`(취약).
+- 단어장 화면의 `이 단어장의 새 단어로 한 판`은 `custom` 모드로, 최근에 추가한 새 단어부터 냅니다.
+- 한 판마다 `play_sessions`에 정답 수와 처리 수를 기록합니다.
+- 결과 화면에서 `한 판 더`로 바로 이어서 플레이할 수 있습니다.
+- 기존 `/review`의 하루 계획·쿼터 로직은 레거시로 남아 있고, `/play`는 이를 사용하지 않습니다.
 
 > **중복 제출 방지**: 같은 프롬프트의 재전송은 `review_key = card_id:shown_at` 멱등키와
 > `reps` 낙관적 락으로 한 번만 기록됩니다. (M6.1)

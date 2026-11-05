@@ -23,8 +23,15 @@
 | DELETE | `/words/:id` | 필요 | 조각 | 단어 삭제 |
 | POST | `/seeds/:slug` | 필요 | 302 | 기본 콘텐츠 임포트 (`basic-1000`, `function-100`) |
 | GET | `/decks/:id/export` | 필요 | 파일 | CSV 다운로드 (⬜ 예정) |
-| GET | `/review` | 필요 | 전체 | 오늘의 큐, 첫 카드 표시 |
-| GET | `/review?mode=weak` | 필요 | 전체 | 기한이 도래한 취약 단어만 연습 |
+| GET | `/play` | 필요 | 전체 | 플레이 모드 선택 |
+| POST | `/play/start` | 필요 | 302 | 플레이 세션 생성 (정책 스냅샷) → `/play/:id` |
+| GET | `/play/:id` | 필요 | 전체 | 현재 문제 |
+| GET | `/play/:id/result` | 필요 | 전체 | 한 판 결과 |
+| POST | `/play/:id/answer` | 필요 | 조각 | item 검증 후 채점 → 결과 |
+| POST | `/play/:id/next` | 필요 | 조각 | 다음 문제 또는 결과 |
+| POST | `/play/:id/abandon` | 필요 | 302 | 세션 중단 |
+| GET | `/review` | 레거시 | 302 | `/play`로 이동 (`LEGACY_REVIEW=1`이면 유지) |
+| GET | `/review?mode=weak` | 레거시 | 302 | `/play?intent=weak`로 이동 |
 | GET | `/review/:cardId` | 필요 | 조각 | 앞면 카드 |
 | POST | `/review/next` | 필요 | 조각 | 결과 확인 후 다음 카드 |
 | POST | `/review/:cardId/hide` | 필요 | 조각 | 신규 카드 소개 → 4지선다 |
@@ -40,7 +47,7 @@
 | GET | `/decks/:id/export` | 필요 | 파일 | 단어장 CSV 다운로드 |
 | GET | `/terms` | — | 전체 | 이용약관 |
 | GET | `/privacy` | — | 전체 | 개인정보처리방침 |
-| GET | `/design` | — | 전체 | 디자인 시스템 2.0 참조 화면 (토큰·화면 설계·모션) |
+| GET | `/design` | — | 전체 | 퍼플 디자인 시스템 (토큰 · 컴포넌트 · 화면 패턴) |
 | GET | `/quiz` | 필요 | 전체 | 테스트 설정 || POST | `/quiz/start` | 필요 | 302 | 새 테스트 생성 |
 | GET | `/quiz/session` | 필요 | 전체 | 현재 문제 |
 | POST | `/quiz/answer` | 필요 | 조각 | 채점 → 피드백 |
