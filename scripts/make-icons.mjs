@@ -3,12 +3,12 @@
  * PWA 아이콘 생성 (의존성 없음)
  *   node scripts/make-icons.mjs
  *
- * 배경 #12694F + 흰색 W. 마스커블 안전 영역(중앙 80%) 안에 들어가도록 그린다.
+ * 배경 #5F2EEA + 흰색 W. 마스커블 안전 영역(중앙 80%) 안에 들어가도록 그린다.
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const BG = [0x12, 0x69, 0x4f];
+const BG = [0x5f, 0x2e, 0xea];
 const FG = [0xff, 0xff, 0xff];
 
 // W 획 (0~1 좌표)

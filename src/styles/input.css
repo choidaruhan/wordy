@@ -2,6 +2,38 @@
 
 @source "../../src";
 
+/* 폰트는 public/fonts에서 직접 제공한다. 외부 폰트 요청 없이 오프라인에서도 동일하게 보인다. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Pretendard Variable";
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+  src: url("/fonts/pretendard-variable.woff2") format("woff2");
+}
+
 @theme {
   /* 간격: 4px 그리드 (4, 8, 12, 16, 20, 24, ...) */
   --spacing: 4px;
@@ -26,122 +58,110 @@
   --text-5xl: 48px;
   --text-5xl--line-height: 56px;
 
-  /* 표면 */
-  --color-paper: #f5f7f4;
+  /* 표면 — 레퍼런스의 라이트 인디고 배경 */
+  --color-paper: #f7f8fc;
   --color-surface: #ffffff;
-  --color-ink: #17211e;
-  --color-muted: #62706b;
-  --color-line: #dde3df;
-  --color-line-strong: #c5cfc9;
+  --color-ink: #1e1b4b;
+  --color-muted: #6b7280;
+  --color-line: #e9e5f8;
+  --color-line-strong: #d5c7ff;
 
-  /* 행동: 채움(accent)과 글자·테두리(accent-text)를 분리한다.
-     다크 모드에서 채움은 흰 글자를 유지하고, 글자는 밝은 민트로 바꾼다. */
-  --color-accent: #0f766e;
-  --color-accent-strong: #0b5f58;
-  --color-accent-soft: #e1f3ef;
-  --color-accent-text: #0b5f58;
+  /* 행동: 채움(accent)과 글자·테두리(accent-text)를 분리한다. */
+  --color-accent: #5f2eea;
+  --color-accent-strong: #4b1ec6;
+  --color-accent-soft: #f4f0ff;
+  --color-accent-text: #5f2eea;
 
   /* 동기: 스트릭·에너지는 앰버 하나만 쓴다. */
-  --color-streak: #b45309;
-  --color-streak-soft: #fff2da;
+  --color-streak: #f59e0b;
+  --color-streak-soft: #fef3c7;
 
   /* 기억 보조: 연상법, 주의 */
   --color-mark: #f6c453;
   --color-mark-soft: #fff7dd;
 
-  /* 오답: 초록 성공과 구분되는 코랄 */
-  --color-danger: #b8482f;
-  --color-danger-soft: #fbe9e4;
+  /* 결과: 성공은 그린, 오답은 레드 */
+  --color-success: #10b981;
+  --color-success-soft: #d1fae5;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fee2e2;
 
-  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
-    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-  --font-word: ui-serif, Georgia, "Times New Roman", serif;
+  /* /design 쇼케이스 전용 팔레트 — 레퍼런스의 퍼플/그린/앰버 */
+  --shadow-brand: 0 8px 20px -4px rgb(95 46 234 / 0.4);
 
-  /* 라운드: 컨트롤 12–16px, 카드 14–16px, 시트 24px */
+  --font-sans: "Plus Jakarta Sans", "Pretendard Variable", Pretendard,
+    -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+  --font-word: "Plus Jakarta Sans", "Pretendard Variable", Pretendard,
+    -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  /* 라운드: 컨트롤 16px, 카드 16px, 큰 패널 24px */
   --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
   --radius-xl: 16px;
   --radius-2xl: 24px;
 
-  /* 그림자: 카드는 종이 한 장처럼, 떠 있는 요소는 한 단계 위로 */
-  --shadow-card: 0 1px 2px rgb(22 33 30 / 0.04), 0 8px 24px rgb(22 33 30 / 0.04);
-  --shadow-float: 0 24px 48px rgb(22 33 30 / 0.14);
+  /* 그림자: 퍼플 틴트의 부드러운 카드/버튼 */
+  --shadow-card: 0 4px 20px -2px rgb(95 46 234 / 0.06);
+  --shadow-float: 0 20px 40px -15px rgb(95 46 234 / 0.18);
 }
 
-/* 다크 모드: 시스템 설정을 따른다. 모든 유틸리티가 변수를 참조하므로
-   화면 코드에 dark:를 붙이지 않아도 색이 바뀐다. */
+/* 테마: data-theme=light|dark|system. 기본은 라이트.
+   모든 유틸리티가 변수를 참조하므로 화면 코드에 dark:를 붙이지 않아도 색이 바뀐다. */
 :root {
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-paper: #0e1412;
-    --color-surface: #161d1a;
-    --color-ink: #e9efec;
-    --color-muted: #9aa8a2;
-    --color-line: #29322e;
-    --color-line-strong: #3a4641;
-    --color-accent: #0f766e;
-    --color-accent-strong: #0b5f58;
-    --color-accent-soft: #123a35;
-    --color-accent-text: #5eead4;
-    --color-streak: #fbbf24;
-    --color-streak-soft: #3a2a0e;
-    --color-mark: #f4c152;
-    --color-mark-soft: #3a2f16;
-    --color-danger: #f08a74;
-    --color-danger-soft: #3a211b;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-float: 0 24px 48px rgb(0 0 0 / 0.45);
-  }
-}
-
-/* /design에서 라이트 모드를 미리 볼 때 쓰는 강제 테마 */
-.theme-light {
   color-scheme: light;
-  --color-paper: #f5f7f4;
-  --color-surface: #ffffff;
-  --color-ink: #17211e;
-  --color-muted: #62706b;
-  --color-line: #dde3df;
-  --color-line-strong: #c5cfc9;
-  --color-accent: #0f766e;
-  --color-accent-strong: #0b5f58;
-  --color-accent-soft: #e1f3ef;
-  --color-accent-text: #0b5f58;
-  --color-streak: #b45309;
-  --color-streak-soft: #fff2da;
-  --color-mark: #f6c453;
-  --color-mark-soft: #fff7dd;
-  --color-danger: #b8482f;
-  --color-danger-soft: #fbe9e4;
-  --shadow-card: 0 1px 2px rgb(22 33 30 / 0.04), 0 8px 24px rgb(22 33 30 / 0.04);
-  --shadow-float: 0 24px 48px rgb(22 33 30 / 0.14);
 }
 
-/* /design에서 다크 모드를 미리 볼 때 쓰는 강제 테마 */
-.theme-dark {
+:root[data-theme="dark"] {
   color-scheme: dark;
-  --color-paper: #0e1412;
-  --color-surface: #161d1a;
-  --color-ink: #e9efec;
-  --color-muted: #9aa8a2;
-  --color-line: #29322e;
-  --color-line-strong: #3a4641;
-  --color-accent: #0f766e;
-  --color-accent-strong: #0b5f58;
-  --color-accent-soft: #123a35;
-  --color-accent-text: #5eead4;
+  --color-paper: #0f0b1f;
+  --color-surface: #17122b;
+  --color-ink: #f3f0ff;
+  --color-muted: #a8a1c4;
+  --color-line: #2a2145;
+  --color-line-strong: #3d3260;
+  --color-accent: #5f2eea;
+  --color-accent-strong: #4b1ec6;
+  --color-accent-soft: #261a4f;
+  --color-accent-text: #c4b5fd;
   --color-streak: #fbbf24;
   --color-streak-soft: #3a2a0e;
   --color-mark: #f4c152;
   --color-mark-soft: #3a2f16;
-  --color-danger: #f08a74;
-  --color-danger-soft: #3a211b;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-float: 0 24px 48px rgb(0 0 0 / 0.45);
+  --color-success: #34d399;
+  --color-success-soft: #103a2e;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1d1d;
+  --shadow-card: 0 4px 24px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 24px 48px rgb(0 0 0 / 0.5);
+}
+
+/* JS 없이도 시스템 다크 모드를 따른다. */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --color-paper: #0f0b1f;
+    --color-surface: #17122b;
+    --color-ink: #f3f0ff;
+    --color-muted: #a8a1c4;
+    --color-line: #2a2145;
+    --color-line-strong: #3d3260;
+    --color-accent: #5f2eea;
+    --color-accent-strong: #4b1ec6;
+    --color-accent-soft: #261a4f;
+    --color-accent-text: #c4b5fd;
+    --color-streak: #fbbf24;
+    --color-streak-soft: #3a2a0e;
+    --color-mark: #f4c152;
+    --color-mark-soft: #3a2f16;
+    --color-success: #34d399;
+    --color-success-soft: #103a2e;
+    --color-danger: #f87171;
+    --color-danger-soft: #3a1d1d;
+    --shadow-card: 0 4px 24px rgb(0 0 0 / 0.35);
+    --shadow-float: 0 24px 48px rgb(0 0 0 / 0.5);
+  }
 }
 
 html {
@@ -153,6 +173,12 @@ body {
   text-rendering: optimizeLegibility;
   word-break: keep-all;
   overflow-wrap: break-word;
+}
+
+/* 단어·큰 숫자는 레퍼런스처럼 굵은 산세리프로 */
+.font-word {
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 pre,
@@ -193,9 +219,20 @@ code {
   outline-offset: 2px;
 }
 
+/* 선택 카드 안의 숨은 라디오도 키보드 포커스가 보이게 한다. */
+label:has(input.sr-only:focus-visible) {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+
 /* iOS 홈 인디케이터 영역을 침범하지 않는 하단 탭 */
 .safe-bottom {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+
+/* 모바일 설정 저장 바는 하단 탭 바로 위에 붙는다. */
+.settings-save-bar {
+  bottom: calc(4rem + env(safe-area-inset-bottom));
 }
 
 summary.summary-clean {
@@ -233,7 +270,8 @@ summary.summary-clean::-webkit-details-marker {
   }
 
   #review-root > *,
-  #quiz-root > * {
+  #quiz-root > *,
+  #play-root > * {
     animation: rise 180ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
   }
 }

@@ -1,10 +1,10 @@
 /* Wordy service worker — 앱 셸만 캐시한다. HTML은 절대 캐시하지 않는다. */
-const VERSION = 'wordy-v2';
+const VERSION = 'wordy-v9';
 
 const SHELL = [
   '/offline.html',
   '/manifest.webmanifest',
-  '/styles.css?v=2',
+  '/styles.css?v=9',
   '/htmx.min.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -45,7 +45,8 @@ self.addEventListener('fetch', (event) => {
   if (
     url.pathname === '/styles.css' ||
     url.pathname === '/htmx.min.js' ||
-    url.pathname.startsWith('/icons/')
+    url.pathname.startsWith('/icons/') ||
+    url.pathname.startsWith('/fonts/')
   ) {
     event.respondWith(
       caches.match(req).then((hit) => {

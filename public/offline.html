@@ -4,77 +4,219 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>오프라인 · Wordy</title>
-    <meta name="theme-color" content="#12694f" />
+    <meta name="theme-color" content="#5f2eea" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#0f0b1f"
+    />
     <style>
       :root {
         color-scheme: light;
+        --paper: #f7f8fc;
+        --surface: #ffffff;
+        --ink: #1e1b4b;
+        --muted: #6b7280;
+        --line: #e9e5f8;
+        --accent: #5f2eea;
+        --accent-strong: #4b1ec6;
+        --accent-soft: #f4f0ff;
+        --shadow: 0 20px 40px -15px rgb(95 46 234 / 0.18);
       }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --paper: #0f0b1f;
+          --surface: #17122b;
+          --ink: #f3f0ff;
+          --muted: #a8a1c4;
+          --line: #2a2145;
+          --accent: #5f2eea;
+          --accent-strong: #4b1ec6;
+          --accent-soft: #261a4f;
+          --shadow: 0 24px 48px rgb(0 0 0 / 0.5);
+        }
+      }
+
       * {
         box-sizing: border-box;
       }
+
       body {
         margin: 0;
         min-height: 100dvh;
         display: grid;
         place-items: center;
         padding: 24px;
-        background: #f3f5f3;
-        color: #16211e;
-        font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
-          system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "Plus Jakarta Sans", "Pretendard Variable", Pretendard,
+          -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
+          "Malgun Gothic", sans-serif;
         -webkit-font-smoothing: antialiased;
+        -webkit-text-size-adjust: 100%;
       }
+
       main {
-        max-width: 26rem;
+        width: 100%;
+        max-width: 24rem;
         text-align: center;
       }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 28px;
+        text-align: left;
+      }
+
       .mark {
-        width: 56px;
-        height: 56px;
-        margin: 0 auto 24px;
-        border-radius: 16px;
-        background: #12694f;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: var(--accent);
         color: #fff;
         display: grid;
         place-items: center;
-        font: 600 24px/1 ui-serif, Georgia, serif;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        box-shadow: var(--shadow);
       }
+
+      .brand-name {
+        display: block;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .tagline {
+        display: block;
+        margin-top: 2px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .card {
+        padding: 32px 24px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 18px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
       h1 {
         margin: 0;
-        font-size: 24px;
-        font-weight: 600;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
       }
+
       p {
-        margin: 12px 0 0;
+        margin: 10px 0 0;
         font-size: 14px;
-        line-height: 24px;
-        color: #5f6c68;
+        line-height: 1.6;
+        color: var(--muted);
       }
+
       button {
+        width: 100%;
         margin-top: 24px;
-        padding: 12px 24px;
-        border: 1px solid #d9dfdc;
-        border-radius: 3px;
-        background: #fff;
-        color: inherit;
+        padding: 14px 20px;
+        border: 0;
+        border-radius: 16px;
+        background: var(--accent);
+        color: #fff;
         font: inherit;
         font-size: 14px;
+        font-weight: 700;
         cursor: pointer;
+        box-shadow: var(--shadow);
+        transition:
+          background-color 120ms ease,
+          transform 120ms ease;
       }
+
       button:hover {
-        border-color: #12694f;
+        background: var(--accent-strong);
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      .hint {
+        margin-top: 14px;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
       }
     </style>
   </head>
   <body>
     <main>
-      <div class="mark">W</div>
-      <h1>오프라인입니다</h1>
-      <p>
-        학습을 계속하려면 연결이 필요합니다. 저장된 화면은 다시 열 수 있지만,
-        카드 기록은 서버에 저장됩니다.
-      </p>
-      <button type="button" onclick="location.reload()">다시 시도</button>
+      <div class="brand">
+        <div class="mark" aria-hidden="true">W</div>
+        <div>
+          <span class="brand-name">Wordy</span>
+          <span class="tagline">영어 단어, 기억하게</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            width="26"
+            height="26"
+          >
+            <path d="m2 2 20 20" />
+            <path d="M8.5 8.5a7 7 0 0 1 9.9 0" />
+            <path d="M5 12a12 12 0 0 1 2.2-1.6" />
+            <path d="M8.5 15.5a6 6 0 0 1 7 0" />
+            <path d="M12 19h.01" />
+          </svg>
+        </div>
+
+        <h1>오프라인입니다</h1>
+        <p>
+          학습을 계속하려면 연결이 필요합니다. 저장된 화면은 다시 열 수 있지만,
+          카드 기록은 서버에 저장됩니다.
+        </p>
+        <button type="button" onclick="location.reload()">다시 시도</button>
+        <p class="hint">연결이 복구되면 다시 시도해 주세요.</p>
+      </div>
     </main>
   </body>
 </html>
