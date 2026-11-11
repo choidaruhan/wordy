@@ -4,6 +4,7 @@ import { Layout } from '../components/layout';
 import {
   addVocab,
   deleteVocab,
+  filterVocab,
   getVocabById,
   listVocab,
   updateVocab,
@@ -46,6 +47,7 @@ function Field(props: {
   placeholder?: string;
   maxlength: number;
   autoFocus?: boolean;
+  filter?: boolean;
 }) {
   return (
     <label class="block">
@@ -59,9 +61,79 @@ function Field(props: {
         autocomplete="off"
         spellcheck={false}
         autofocus={props.autoFocus}
+        hx-get={props.filter ? '/words/filter' : undefined}
+        hx-trigger={props.filter ? 'input changed delay:150ms' : undefined}
+        hx-target={props.filter ? '#word-list' : undefined}
+        hx-swap={props.filter ? 'innerHTML' : undefined}
+        hx-sync={props.filter ? 'this:replace' : undefined}
         class="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-base outline-none focus:border-accent-text"
       />
     </label>
+  );
+}
+
+function WordList(props: { items: EditItem[]; query: string }) {
+  const q = props.query.trim().slice(0, 120);
+  const exact = q
+    ? props.items.some((item) => item.term.toLowerCase() === q.toLowerCase())
+    : false;
+
+  if (props.items.length === 0) {
+    return (
+      <div class="mt-6 rounded-2xl border border-dashed border-line-strong bg-surface px-5 py-10 text-center">
+        <p class="text-sm font-semibold">
+          {q ? `‘${q}’로 시작하는 단어가 없습니다.` : '아직 단어가 없습니다.'}
+        </p>
+        <p class="mt-1 text-xs leading-5 text-muted">
+          {q
+            ? '위에서 새 단어로 추가할 수 있습니다.'
+            : '위에 첫 단어를 추가하면 바로 퀴즈를 시작할 수 있습니다.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div class="mt-6">
+      {exact ? (
+        <p class="mb-2 rounded-xl border border-streak/30 bg-streak-soft px-4 py-3 text-sm font-semibold text-ink">
+          이미 등록된 단어입니다. 아래에서 수정하세요.
+        </p>
+      ) : null}
+      {q ? (
+        <p class="mb-2 text-xs font-semibold text-muted">
+          ‘{q}’로 시작하는 단어 {props.items.length}개
+        </p>
+      ) : null}
+      <ul class="space-y-2">
+        {props.items.map((item) => (
+          <li class="flex items-start justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card">
+            <div class="min-w-0">
+              <p class="font-word text-base break-words">{item.term}</p>
+              <p class="mt-0.5 text-sm leading-5 text-muted break-words">
+                {item.meaning}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <a
+                href={`/words/${item.id}/edit`}
+                class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-accent-soft hover:text-accent-text"
+              >
+                수정
+              </a>
+              <form method="post" action={`/words/${item.id}/delete`}>
+                <button
+                  type="submit"
+                  class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-danger-soft hover:text-danger"
+                >
+                  삭제
+                </button>
+              </form>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -157,7 +229,11 @@ words.get('/words', async (c) => {
           placeholder="context"
           maxlength={120}
           autoFocus
+          filter
         />
+        <p class="mt-1 text-xs text-muted">
+          입력하면 아래 목록이 그 철자로 시작하는 단어만 보입니다.
+        </p>
         <div class="mt-3">
           <Field
             label="뜻"
@@ -175,43 +251,9 @@ words.get('/words', async (c) => {
         </button>
       </form>
 
-      {items.length === 0 ? (
-        <div class="mt-6 rounded-2xl border border-dashed border-line-strong bg-surface px-5 py-10 text-center">
-          <p class="text-sm font-semibold">아직 단어가 없습니다.</p>
-          <p class="mt-1 text-xs leading-5 text-muted">
-            위에 첫 단어를 추가하면 바로 퀴즈를 시작할 수 있습니다.
-          </p>
-        </div>
-      ) : (
-        <ul class="mt-6 space-y-2">
-          {items.map((item) => (
-            <li class="flex items-start justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card">
-              <div class="min-w-0">
-                <p class="font-word text-base break-words">{item.term}</p>
-                <p class="mt-0.5 text-sm leading-5 text-muted break-words">
-                  {item.meaning}
-                </p>
-              </div>
-              <div class="flex shrink-0 items-center gap-1">
-                <a
-                  href={`/words/${item.id}/edit`}
-                  class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-accent-soft hover:text-accent-text"
-                >
-                  수정
-                </a>
-                <form method="post" action={`/words/${item.id}/delete`}>
-                  <button
-                    type="submit"
-                    class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-danger-soft hover:text-danger"
-                  >
-                    삭제
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div id="word-list">
+        <WordList items={items} query="" />
+      </div>
 
       <div class="mt-8 text-center">
         <a
@@ -223,6 +265,16 @@ words.get('/words', async (c) => {
       </div>
     </Layout>
   );
+});
+
+words.get('/words/filter', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.text('', 401);
+
+  const query = c.req.query('term') ?? '';
+  const items = await filterVocab(c.env.DB, user.id, query);
+
+  return c.html(<WordList items={items} query={query} />);
 });
 
 words.post('/words', async (c) => {

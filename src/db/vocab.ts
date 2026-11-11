@@ -91,6 +91,29 @@ export async function addVocab(
   return 'created';
 }
 
+/** 입력한 글자로 시작하는 단어만 목록에 남긴다. 빈 검색어면 전체. */
+export async function filterVocab(
+  db: D1Database,
+  userId: string,
+  query: string
+): Promise<Vocab[]> {
+  const q = query.trim().toLowerCase().slice(0, 120);
+  if (!q) return listVocab(db, userId);
+
+  const like = `${q.replace(/[\\%_]/g, '\\$&')}%`;
+  const { results } = await db
+    .prepare(
+      `SELECT id, term, meaning, created_at
+         FROM vocab
+        WHERE user_id = ? AND lower(term) LIKE ? ESCAPE '\\'
+        ORDER BY created_at DESC`
+    )
+    .bind(userId, like)
+    .all<Vocab>();
+
+  return results;
+}
+
 export async function getVocabById(
   db: D1Database,
   userId: string,
