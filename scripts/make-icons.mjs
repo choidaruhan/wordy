@@ -3,13 +3,16 @@
  * PWA 아이콘 생성 (의존성 없음)
  *   node scripts/make-icons.mjs
  *
- * 배경 #5F2EEA + 흰색 W. 마스커블 안전 영역(중앙 80%) 안에 들어가도록 그린다.
+ * 배경 #5F2EEA + 흰색 W.
+ * - PWA/OS 아이콘은 꽉 찬 배경(마스커블 안전 영역 중앙 80%).
+ * - favicon은 헤더 로고와 같은 둥근 사각형.
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const BG = [0x5f, 0x2e, 0xea];
 const FG = [0xff, 0xff, 0xff];
+const RADIUS_RATIO = 0.22;
 
 // W 획 (0~1 좌표)
 const POINTS = [
@@ -32,9 +35,22 @@ function distToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - cx, py - cy);
 }
 
-function render(size) {
+/** 둥근 사각형 안쪽이면 1, 바깥이면 0, 경계는 0~1로 부드럽게. */
+function roundedRectAlpha(px, py, size, radius) {
+  const half = size / 2;
+  const inner = half - radius;
+  const qx = Math.abs(px - half) - inner;
+  const qy = Math.abs(py - half) - inner;
+  const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+  const inside = Math.min(Math.max(qx, qy), 0);
+  const d = outside + inside - radius;
+  return Math.max(0, Math.min(1, 0.5 - d));
+}
+
+function render(size, rounded = false) {
   const px = Buffer.alloc(size * size * 4);
   const half = (THICKNESS * size) / 2;
+  const radius = size * RADIUS_RATIO;
   const pts = POINTS.map(([x, y]) => [x * size, y * size]);
 
   for (let y = 0; y < size; y++) {
@@ -51,11 +67,12 @@ function render(size) {
 
       // 1px 폭으로 부드럽게
       const a = Math.max(0, Math.min(1, half + 0.5 - d));
+      const alpha = rounded ? roundedRectAlpha(cx, cy, size, radius) : 1;
       const o = (y * size + x) * 4;
       px[o] = Math.round(BG[0] * (1 - a) + FG[0] * a);
       px[o + 1] = Math.round(BG[1] * (1 - a) + FG[1] * a);
       px[o + 2] = Math.round(BG[2] * (1 - a) + FG[2] * a);
-      px[o + 3] = 255;
+      px[o + 3] = Math.round(255 * alpha);
     }
   }
   return px;
@@ -110,6 +127,13 @@ function encodePng(size, rgba) {
   ]);
 }
 
+const W_PATH = 'M27 34L38.5 67L50 47L61.5 67L73 34';
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Wordy">
+  <rect width="100" height="100" rx="22" fill="#5F2EEA"/>
+  <path d="${W_PATH}" fill="none" stroke="#FFFFFF" stroke-width="6.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`;
+
 mkdirSync('public/icons', { recursive: true });
 mkdirSync('brand', { recursive: true });
 
@@ -121,6 +145,17 @@ for (const [name, size] of [
   writeFileSync(`public/icons/${name}`, encodePng(size, render(size)));
   console.log(`public/icons/${name} (${size}×${size})`);
 }
+
+for (const [name, size] of [
+  ['favicon-16.png', 16],
+  ['favicon-32.png', 32],
+]) {
+  writeFileSync(`public/${name}`, encodePng(size, render(size, true)));
+  console.log(`public/${name} (${size}×${size})`);
+}
+
+writeFileSync('public/favicon.svg', FAVICON_SVG);
+console.log('public/favicon.svg');
 
 // Google OAuth 동의 화면 로고: 120×120, 1MB 이하
 writeFileSync('brand/oauth-logo-120.png', encodePng(120, render(120)));

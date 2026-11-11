@@ -109,16 +109,14 @@ test('rate-limit: 경로별 정책을 매핑한다', () => {
     limit: 10,
     windowSeconds: 60,
   });
-  assert.equal(rateLimitPolicy('POST', '/play/start')?.scope, 'user');
-  assert.equal(rateLimitPolicy('POST', '/play/abc/answer')?.key, 'play-answer');
-  assert.equal(rateLimitPolicy('POST', '/play/abc/confidence')?.key, 'play-confidence');
-  assert.equal(rateLimitPolicy('POST', '/decks')?.key, 'content-write');
-  assert.equal(rateLimitPolicy('DELETE', '/words/w1')?.key, 'content-delete');
-  assert.equal(rateLimitPolicy('POST', '/quiz/start')?.key, 'quiz-start');
-  assert.equal(rateLimitPolicy('POST', '/settings/fsrs')?.key, 'settings');
+  assert.equal(rateLimitPolicy('POST', '/words')?.key, 'words-add');
+  assert.equal(rateLimitPolicy('POST', '/words/w1/delete')?.key, 'words-delete');
+  assert.equal(rateLimitPolicy('POST', '/quiz/answer')?.key, 'quiz-answer');
+  assert.equal(rateLimitPolicy('POST', '/quiz/next')?.key, 'quiz-next');
+  assert.equal(rateLimitPolicy('POST', '/logout')?.key, 'logout');
 
-  assert.equal(rateLimitPolicy('GET', '/play'), null);
-  assert.equal(rateLimitPolicy('GET', '/stats'), null);
+  assert.equal(rateLimitPolicy('GET', '/'), null);
+  assert.equal(rateLimitPolicy('GET', '/words'), null);
   assert.equal(rateLimitPolicy('POST', '/unknown'), null);
 });
 

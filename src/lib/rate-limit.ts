@@ -28,56 +28,20 @@ export function rateLimitPolicy(
     return { key: 'auth', scope: 'ip', limit: 10, windowSeconds: 60 };
   }
 
-  if (m === 'POST' && path === '/play/start') {
-    return { key: 'play-start', scope: 'user', limit: 30, windowSeconds: 60 };
+  if (m === 'POST' && path === '/words') {
+    return { key: 'words-add', scope: 'user', limit: 120, windowSeconds: 60 };
   }
-  if (m === 'POST' && /^\/play\/[^/]+\/answer$/.test(path)) {
-    return { key: 'play-answer', scope: 'user', limit: 120, windowSeconds: 60 };
-  }
-  if (m === 'POST' && /^\/play\/[^/]+\/confidence$/.test(path)) {
-    return {
-      key: 'play-confidence',
-      scope: 'user',
-      limit: 120,
-      windowSeconds: 60,
-    };
-  }
-  if (m === 'POST' && /^\/play\/[^/]+\/abandon$/.test(path)) {
-    return { key: 'play-abandon', scope: 'user', limit: 30, windowSeconds: 60 };
-  }
-
-  if (
-    m === 'POST' &&
-    (path === '/decks' ||
-      /^\/decks\/[^/]+\/words$/.test(path) ||
-      /^\/seeds\/[^/]+$/.test(path))
-  ) {
-    return { key: 'content-write', scope: 'user', limit: 60, windowSeconds: 60 };
-  }
-  if (
-    m === 'DELETE' &&
-    (path === '/decks' ||
-      /^\/decks\/[^/]+$/.test(path) ||
-      /^\/words\/[^/]+$/.test(path))
-  ) {
-    return { key: 'content-delete', scope: 'user', limit: 30, windowSeconds: 60 };
-  }
-
-  if (m === 'POST' && path === '/quiz/start') {
-    return { key: 'quiz-start', scope: 'user', limit: 10, windowSeconds: 60 };
+  if (m === 'POST' && /^\/words\/[^/]+\/delete$/.test(path)) {
+    return { key: 'words-delete', scope: 'user', limit: 60, windowSeconds: 60 };
   }
   if (m === 'POST' && path === '/quiz/answer') {
-    return { key: 'quiz-answer', scope: 'user', limit: 120, windowSeconds: 60 };
+    return { key: 'quiz-answer', scope: 'user', limit: 240, windowSeconds: 60 };
   }
-
-  if (m === 'POST' && (path === '/settings' || path.startsWith('/settings/'))) {
-    return { key: 'settings', scope: 'user', limit: 30, windowSeconds: 60 };
+  if (m === 'POST' && path === '/quiz/next') {
+    return { key: 'quiz-next', scope: 'user', limit: 240, windowSeconds: 60 };
   }
   if (m === 'POST' && path === '/logout') {
     return { key: 'logout', scope: 'user', limit: 30, windowSeconds: 60 };
-  }
-  if (m === 'POST' && /^\/hard\/[^/]+\/(note|resume)$/.test(path)) {
-    return { key: 'hard', scope: 'user', limit: 60, windowSeconds: 60 };
   }
 
   return null;

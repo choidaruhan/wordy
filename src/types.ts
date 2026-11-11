@@ -4,26 +4,12 @@ export type Bindings = {
   DEV_LOGIN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  LEGACY_REVIEW?: string;
 };
 
 export type User = {
   id: string;
   email: string;
   display_name: string | null;
-  tz_offset_min: number;
-  timezone: string | null;
-  daily_new: number;
-  daily_review: number;
-  learning_mode: 'session' | 'daily';
-  confidence_mode: 'off' | 'sample' | 'always';
-  session_size: number;
-  new_per_session: number;
-  new_card_mode: 'auto' | 'fixed';
-  listening_enabled: boolean;
-  voice_locale: 'en-US' | 'en-GB';
-  voice_rate: number;
-  fsrs_params: number[] | null;
 };
 
 export type Env = {
@@ -33,36 +19,9 @@ export type Env = {
   };
 };
 
-export type Deck = {
-  id: string;
-  name: string;
-  created_at: string;
-  word_count: number;
-};
-
-export type WordRow = {
+export type Vocab = {
   id: string;
   term: string;
   meaning: string;
-  pos: string | null;
-  example: string | null;
-  example_ko: string | null;
-  category: string | null;
-  level: string | null;
-  pronunciation: string | null;
-  audio_url: string | null;
-  collocations: string | null;
-  synonyms: string | null;
-  antonyms: string | null;
-  extra_examples_raw: string | null;
-  due_at: string | null;
-  state: string | null;
-};
-
-export type Stats = {
-  total: number;
-  decks: number;
-  learned: number;
-  mastered: number;
-  hard: number;
+  created_at: string;
 };

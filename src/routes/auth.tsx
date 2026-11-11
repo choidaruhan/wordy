@@ -65,12 +65,6 @@ auth.get('/login', (c) => {
           </p>
         ) : null}
 
-        <a
-          href="/"
-          class="block pt-1 text-center text-xs font-semibold text-muted hover:text-accent-text"
-        >
-          Wordy 소개로 돌아가기
-        </a>
       </div>
     </Layout>
   );

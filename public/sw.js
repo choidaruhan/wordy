@@ -1,65 +1,20 @@
-/* Wordy service worker — 앱 셸만 캐시한다. HTML은 절대 캐시하지 않는다. */
-const VERSION = 'wordy-v10';
-
-const SHELL = [
-  '/offline.html',
-  '/manifest.webmanifest',
-  '/styles.css?v=10',
-  '/htmx.min.js',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(VERSION)
-      .then((cache) => cache.addAll(SHELL))
-      .then(() => self.skipWaiting())
-  );
-});
+/**
+ * 이 앱은 서비스 워커를 쓰지 않는다.
+ * 예전 버전의 캐시가 남아 있으면 새 화면이 안 보일 수 있으므로,
+ * 기존 워커는 캐시를 지우고 스스로 등록 해제한다.
+ */
+self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      for (const client of clients) {
+        client.navigate(client.url);
+      }
+    })()
   );
-});
-
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
-
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
-
-  // 화면 이동: 네트워크 우선. 실패하면 오프라인 안내.
-  if (req.mode === 'navigate') {
-    event.respondWith(fetch(req).catch(() => caches.match('/offline.html')));
-    return;
-  }
-
-  // 정적 자산: 캐시 먼저 보여주고 뒤에서 갱신
-  if (
-    url.pathname === '/styles.css' ||
-    url.pathname === '/htmx.min.js' ||
-    url.pathname.startsWith('/icons/') ||
-    url.pathname.startsWith('/fonts/')
-  ) {
-    event.respondWith(
-      caches.match(req).then((hit) => {
-        const network = fetch(req)
-          .then((res) => {
-            const copy = res.clone();
-            caches.open(VERSION).then((cache) => cache.put(req, copy));
-            return res;
-          })
-          .catch(() => hit);
-
-        return hit || network;
-      })
-    );
-  }
 });

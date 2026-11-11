@@ -1,10 +1,10 @@
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import type { Env, User } from '../types';
-import { parseFsrsParams } from './srs';
 
 const COOKIE = 'sid';
 const SESSION_DAYS = 30;
+const USER_COLS = 'id, email, display_name';
 
 export function isSecureRequest(c: Context<Env>): boolean {
   return new URL(c.req.url).protocol === 'https:';
@@ -20,9 +20,6 @@ function randomToken(): string {
   crypto.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
-
-const USER_COLS =
-  'id, email, display_name, tz_offset_min, timezone, daily_new, daily_review, learning_mode, confidence_mode, session_size, new_per_session, new_card_mode, listening_enabled, voice_locale, voice_rate, fsrs_params';
 
 export async function createSession(c: Context<Env>, userId: string): Promise<void> {
   const token = randomToken();
@@ -79,22 +76,6 @@ export async function getSessionUser(c: Context<Env>): Promise<User | null> {
     id: row.id,
     email: row.email,
     display_name: row.display_name,
-    tz_offset_min: row.tz_offset_min,
-    timezone: typeof row.timezone === 'string' ? row.timezone : null,
-    daily_new: row.daily_new,
-    daily_review: row.daily_review,
-    learning_mode: row.learning_mode === 'daily' ? 'daily' : 'session',
-    confidence_mode:
-      row.confidence_mode === 'off' || row.confidence_mode === 'always'
-        ? row.confidence_mode
-        : 'sample',
-    session_size: Number(row.session_size) || 5,
-    new_per_session: Number(row.new_per_session) || 0,
-    new_card_mode: row.new_card_mode === 'fixed' ? 'fixed' : 'auto',
-    listening_enabled: Boolean(row.listening_enabled),
-    voice_locale: row.voice_locale === 'en-GB' ? 'en-GB' : 'en-US',
-    voice_rate: Number(row.voice_rate) || 0.9,
-    fsrs_params: parseFsrsParams(row.fsrs_params),
   };
 }
 
@@ -103,50 +84,27 @@ export async function findOrCreateUser(
   email: string,
   displayName: string | null
 ): Promise<User> {
-  const existing = await c.env.DB.prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`)
+  const existing = await c.env.DB.prepare(
+    `SELECT ${USER_COLS} FROM users WHERE email = ?`
+  )
     .bind(email)
     .first<User>();
 
-  if (existing) {
-    return {
-      ...existing,
-      new_card_mode: existing.new_card_mode === 'fixed' ? 'fixed' : 'auto',
-      learning_mode: existing.learning_mode === 'daily' ? 'daily' : 'session',
-      confidence_mode:
-        existing.confidence_mode === 'off' || existing.confidence_mode === 'always'
-          ? existing.confidence_mode
-          : 'sample',
-      listening_enabled: Boolean(existing.listening_enabled),
-      voice_locale: existing.voice_locale === 'en-GB' ? 'en-GB' : 'en-US',
-      voice_rate: Number(existing.voice_rate) || 0.9,
-      fsrs_params: parseFsrsParams(existing.fsrs_params),
-    };
-  }
+  if (existing) return existing;
 
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await c.env.DB.prepare('INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)')
-    .bind(id, email, displayName, now)
-    .run();
-
-  return {
-    id,
+  const user: User = {
+    id: crypto.randomUUID(),
     email,
     display_name: displayName,
-    tz_offset_min: 540,
-    timezone: 'Asia/Seoul',
-    daily_new: 10,
-    daily_review: 200,
-    learning_mode: 'session',
-    confidence_mode: 'sample',
-    session_size: 5,
-    new_per_session: 2,
-    new_card_mode: 'auto',
-    listening_enabled: false,
-    voice_locale: 'en-US',
-    voice_rate: 0.9,
-    fsrs_params: null,
   };
+
+  await c.env.DB.prepare(
+    'INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)'
+  )
+    .bind(user.id, user.email, user.display_name, new Date().toISOString())
+    .run();
+
+  return user;
 }
 
 export async function requireUser(c: Context<Env>): Promise<User> {

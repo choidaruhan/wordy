@@ -5,16 +5,9 @@ import { getSessionUser } from './lib/auth';
 import { isAllowedMutationOrigin } from './lib/security';
 import { checkRateLimit, rateLimitPolicy } from './lib/rate-limit';
 import auth from './routes/auth';
-import home from './routes/home';
-import decks from './routes/decks';
-import review from './routes/review';
-import play from './routes/play';
-import hard from './routes/hard';
-import stats from './routes/stats';
 import quiz from './routes/quiz';
-import settings from './routes/settings';
+import words from './routes/words';
 import legal from './routes/legal';
-import design from './routes/design';
 
 const app = new Hono<Env>();
 
@@ -85,7 +78,6 @@ app.use('*', async (c, next) => {
           );
         }
       } catch (err) {
-        // 제한 저장 실패가 정상 학습을 막지 않게 한다.
         console.error('rate limit failed', err);
       }
     }
@@ -96,23 +88,16 @@ app.use('*', async (c, next) => {
 });
 
 app.route('/', auth);
-app.route('/', home);
-app.route('/', decks);
-app.route('/', review);
-app.route('/', play);
-app.route('/', hard);
-app.route('/', stats);
 app.route('/', quiz);
-app.route('/', settings);
+app.route('/', words);
 app.route('/', legal);
-app.route('/', design);
 
 app.notFound((c) => {
   const user = c.get('user') ?? null;
 
   return c.html(
     <Layout title="페이지를 찾을 수 없습니다" user={user}>
-      <div class="pt-6 text-center">
+      <div class="pt-10 text-center">
         <p class="text-xs font-bold tracking-widest text-accent-text uppercase">
           404
         </p>
@@ -120,22 +105,14 @@ app.notFound((c) => {
           페이지를 찾을 수 없습니다
         </h1>
         <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted">
-          주소가 바뀌었거나 삭제된 페이지입니다. 홈에서 다시 시작해 보세요.
+          주소가 바뀌었거나 삭제된 페이지입니다.
         </p>
-        <div class="mt-8 flex flex-col items-center gap-2">
-          <a
-            href="/"
-            class="w-full max-w-sm rounded-2xl bg-accent px-5 py-3.5 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
-          >
-            홈으로
-          </a>
-          <a
-            href={user ? '/play' : '/login'}
-            class="w-full max-w-sm rounded-2xl border border-line bg-surface px-5 py-3.5 text-sm font-bold hover:border-accent-text"
-          >
-            {user ? '학습 이어가기' : '로그인'}
-          </a>
-        </div>
+        <a
+          href="/"
+          class="mt-8 inline-flex rounded-2xl bg-accent px-5 py-3.5 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
+        >
+          홈으로
+        </a>
       </div>
     </Layout>,
     404
@@ -148,7 +125,7 @@ app.onError((err, c) => {
 
   return c.html(
     <Layout title="문제가 발생했습니다" user={user}>
-      <div class="pt-6 text-center">
+      <div class="pt-10 text-center">
         <p class="text-xs font-bold tracking-widest text-accent-text uppercase">
           500
         </p>
@@ -156,23 +133,15 @@ app.onError((err, c) => {
           문제가 발생했습니다
         </h1>
         <p class="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted">
-          잠시 후 다시 시도해 주세요. 계속되면 홈으로 이동해 주세요.
+          잠시 후 다시 시도해 주세요.
         </p>
-        <div class="mt-8 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onclick="location.reload()"
-            class="w-full max-w-sm rounded-2xl bg-accent px-5 py-3.5 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
-          >
-            다시 시도
-          </button>
-          <a
-            href="/"
-            class="w-full max-w-sm rounded-2xl border border-line bg-surface px-5 py-3.5 text-sm font-bold hover:border-accent-text"
-          >
-            홈으로
-          </a>
-        </div>
+        <button
+          type="button"
+          onclick="location.reload()"
+          class="mt-8 rounded-2xl bg-accent px-5 py-3.5 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
+        >
+          다시 시도
+        </button>
       </div>
     </Layout>,
     500
