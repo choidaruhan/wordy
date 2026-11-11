@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "wordy",
+  "account_id": "9bd83706e10a4311736c6f5cdc6b849d",
   "main": "src/index.tsx",
   "compatibility_date": "2026-10-01",
   "observability": {

@@ -15,7 +15,7 @@
 | 경로 | 역할 |
 |---|---|
 | `/` | 무작위 단어 4지선다. 정답/오답 피드백 후 다음 문제 |
-| `/words` | 단어 등록·목록·삭제. 입력은 `영어 단어` + `뜻` 두 칸 |
+| `/words` | 단어 등록·수정·삭제. 입력은 `영어 단어` + `뜻` 두 칸 |
 | `/login` | Google 로그인 (로컬은 `DEV_LOGIN=true`) |
 
 같은 단어를 다시 등록하면 새로 쌓지 않고 뜻만 갱신합니다.
@@ -77,6 +77,19 @@ npm run build        # htmx 복사 + CSS 빌드
 ```bash
 npm run deploy       # predeploy에서 verify + build
 ```
+
+배포 인증은 OAuth 로그인 대신 API 토큰을 쓸 수 있습니다.
+
+1. Cloudflare 대시보드 → My Profile → API Tokens → Create Token
+2. 권한: Account · **Workers Scripts:Edit**, **D1:Edit**, **Account Settings:Read**
+3. `.env.example`을 `.env`로 복사하고 `CLOUDFLARE_API_TOKEN`에 값을 넣습니다.
+
+```bash
+cp .env.example .env
+```
+
+`.env`는 `.gitignore`에 포함되어 있고, wrangler가 자동으로 읽습니다.
+이후에는 `npx wrangler login` 없이 `npm run deploy`가 동작합니다.
 
 ---
 

@@ -31,6 +31,9 @@ export function rateLimitPolicy(
   if (m === 'POST' && path === '/words') {
     return { key: 'words-add', scope: 'user', limit: 120, windowSeconds: 60 };
   }
+  if (m === 'POST' && /^\/words\/[^/]+$/.test(path)) {
+    return { key: 'words-edit', scope: 'user', limit: 120, windowSeconds: 60 };
+  }
   if (m === 'POST' && /^\/words\/[^/]+\/delete$/.test(path)) {
     return { key: 'words-delete', scope: 'user', limit: 60, windowSeconds: 60 };
   }

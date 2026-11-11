@@ -104,6 +104,37 @@ export async function getVocabById(
     .first<{ id: string; term: string; meaning: string }>();
 }
 
+export async function updateVocab(
+  db: D1Database,
+  userId: string,
+  id: string,
+  term: string,
+  meaning: string
+): Promise<'updated' | 'duplicate' | 'missing'> {
+  const cleanTerm = term.trim().replace(/\s+/g, ' ');
+  const cleanMeaning = meaning.trim().replace(/\s+/g, ' ');
+
+  const current = await getVocabById(db, userId, id);
+  if (!current) return 'missing';
+
+  const conflict = await db
+    .prepare(
+      `SELECT id FROM vocab
+        WHERE user_id = ? AND lower(term) = lower(?) AND id != ?`
+    )
+    .bind(userId, cleanTerm, id)
+    .first<{ id: string }>();
+
+  if (conflict) return 'duplicate';
+
+  await db
+    .prepare('UPDATE vocab SET term = ?, meaning = ? WHERE id = ? AND user_id = ?')
+    .bind(cleanTerm, cleanMeaning, id, userId)
+    .run();
+
+  return 'updated';
+}
+
 export async function deleteVocab(
   db: D1Database,
   userId: string,

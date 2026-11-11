@@ -110,6 +110,7 @@ test('rate-limit: 경로별 정책을 매핑한다', () => {
     windowSeconds: 60,
   });
   assert.equal(rateLimitPolicy('POST', '/words')?.key, 'words-add');
+  assert.equal(rateLimitPolicy('POST', '/words/w1')?.key, 'words-edit');
   assert.equal(rateLimitPolicy('POST', '/words/w1/delete')?.key, 'words-delete');
   assert.equal(rateLimitPolicy('POST', '/quiz/answer')?.key, 'quiz-answer');
   assert.equal(rateLimitPolicy('POST', '/quiz/next')?.key, 'quiz-next');

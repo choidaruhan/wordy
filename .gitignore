@@ -2,6 +2,8 @@ node_modules/
 .wrangler/
 backups/
 .dev.vars
+.env
+.env.local
 public/styles.css
 public/htmx.min.js
 DS_Store

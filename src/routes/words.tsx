@@ -1,19 +1,31 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { Layout } from '../components/layout';
-import { addVocab, deleteVocab, listVocab } from '../db/vocab';
+import {
+  addVocab,
+  deleteVocab,
+  getVocabById,
+  listVocab,
+  updateVocab,
+} from '../db/vocab';
 
 const words = new Hono<Env>();
 
-function Notice(props: { kind: 'created' | 'updated' | 'deleted' | 'error' }) {
+type EditItem = { id: string; term: string; meaning: string };
+
+function Notice(props: {
+  kind: 'created' | 'updated' | 'edited' | 'deleted' | 'error';
+}) {
   const text =
     props.kind === 'created'
       ? '단어를 추가했습니다.'
       : props.kind === 'updated'
         ? '이미 있는 단어라 뜻을 업데이트했습니다.'
-        : props.kind === 'deleted'
-          ? '단어를 삭제했습니다.'
-          : '단어와 뜻을 모두 입력해 주세요.';
+        : props.kind === 'edited'
+          ? '단어를 수정했습니다.'
+          : props.kind === 'deleted'
+            ? '단어를 삭제했습니다.'
+            : '단어와 뜻을 모두 입력해 주세요.';
 
   const tone =
     props.kind === 'error'
@@ -24,6 +36,91 @@ function Notice(props: { kind: 'created' | 'updated' | 'deleted' | 'error' }) {
     <p class={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${tone}`}>
       {text}
     </p>
+  );
+}
+
+function Field(props: {
+  label: string;
+  name: string;
+  value?: string;
+  placeholder?: string;
+  maxlength: number;
+  autoFocus?: boolean;
+}) {
+  return (
+    <label class="block">
+      <span class="text-xs font-bold text-muted">{props.label}</span>
+      <input
+        name={props.name}
+        required
+        maxlength={props.maxlength}
+        value={props.value ?? ''}
+        placeholder={props.placeholder}
+        autocomplete="off"
+        spellcheck={false}
+        autofocus={props.autoFocus}
+        class="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-base outline-none focus:border-accent-text"
+      />
+    </label>
+  );
+}
+
+function EditPage(props: { item: EditItem; duplicate?: boolean }) {
+  return (
+    <>
+      <a
+        href="/words"
+        class="text-xs font-semibold text-muted hover:text-accent-text"
+      >
+        ← 단어 목록
+      </a>
+      <h1 class="mt-2 text-2xl font-extrabold tracking-tight">단어 수정</h1>
+
+      {props.duplicate ? (
+        <p class="mt-4 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">
+          같은 단어가 이미 있습니다. 다른 표제어를 쓰거나 기존 단어를 수정하세요.
+        </p>
+      ) : null}
+
+      <form
+        method="post"
+        action={`/words/${props.item.id}`}
+        class="mt-5 rounded-2xl border border-line bg-surface p-4 shadow-card"
+      >
+        <Field
+          label="영어 단어"
+          name="term"
+          value={props.item.term}
+          placeholder="context"
+          maxlength={120}
+          autoFocus
+        />
+        <div class="mt-3">
+          <Field
+            label="뜻"
+            name="meaning"
+            value={props.item.meaning}
+            placeholder="문맥, 전후관계; 배경, 상황"
+            maxlength={500}
+          />
+        </div>
+
+        <div class="mt-4 flex gap-2">
+          <button
+            type="submit"
+            class="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-bold text-white shadow-brand hover:bg-accent-strong"
+          >
+            저장
+          </button>
+          <a
+            href="/words"
+            class="flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-center text-sm font-bold hover:border-accent-text"
+          >
+            취소
+          </a>
+        </div>
+      </form>
+    </>
   );
 }
 
@@ -43,6 +140,7 @@ words.get('/words', async (c) => {
 
       {state === 'created' ||
       state === 'updated' ||
+      state === 'edited' ||
       state === 'deleted' ||
       state === 'error' ? (
         <Notice kind={state} />
@@ -53,32 +151,21 @@ words.get('/words', async (c) => {
         action="/words"
         class="mt-5 rounded-2xl border border-line bg-surface p-4 shadow-card"
       >
-        <label class="block">
-          <span class="text-xs font-bold text-muted">영어 단어</span>
-          <input
-            name="term"
-            required
-            maxlength={120}
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck={false}
-            autofocus
-            placeholder="context"
-            class="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-base font-semibold outline-none focus:border-accent-text"
-          />
-        </label>
-
-        <label class="mt-3 block">
-          <span class="text-xs font-bold text-muted">뜻</span>
-          <input
+        <Field
+          label="영어 단어"
+          name="term"
+          placeholder="context"
+          maxlength={120}
+          autoFocus
+        />
+        <div class="mt-3">
+          <Field
+            label="뜻"
             name="meaning"
-            required
-            maxlength={500}
-            autocomplete="off"
             placeholder="문맥, 전후관계; 배경, 상황"
-            class="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2.5 text-base outline-none focus:border-accent-text"
+            maxlength={500}
           />
-        </label>
+        </div>
 
         <button
           type="submit"
@@ -105,14 +192,22 @@ words.get('/words', async (c) => {
                   {item.meaning}
                 </p>
               </div>
-              <form method="post" action={`/words/${item.id}/delete`}>
-                <button
-                  type="submit"
-                  class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-danger-soft hover:text-danger"
+              <div class="flex shrink-0 items-center gap-1">
+                <a
+                  href={`/words/${item.id}/edit`}
+                  class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-accent-soft hover:text-accent-text"
                 >
-                  삭제
-                </button>
-              </form>
+                  수정
+                </a>
+                <form method="post" action={`/words/${item.id}/delete`}>
+                  <button
+                    type="submit"
+                    class="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-danger-soft hover:text-danger"
+                  >
+                    삭제
+                  </button>
+                </form>
+              </div>
             </li>
           ))}
         </ul>
@@ -151,6 +246,58 @@ words.post('/words', async (c) => {
   );
 
   return c.redirect(`/words?state=${result}`);
+});
+
+words.get('/words/:id/edit', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.redirect('/login');
+
+  const item = await getVocabById(c.env.DB, user.id, c.req.param('id'));
+  if (!item) return c.notFound();
+
+  return c.html(
+    <Layout title="단어 수정" user={user} active="words">
+      <EditPage item={item} />
+    </Layout>
+  );
+});
+
+words.post('/words/:id', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.redirect('/login');
+
+  const id = c.req.param('id');
+  const body = await c.req.parseBody();
+  const term = typeof body['term'] === 'string' ? body['term'].trim() : '';
+  const meaning =
+    typeof body['meaning'] === 'string' ? body['meaning'].trim() : '';
+
+  if (!term || !meaning) {
+    return c.redirect(`/words/${id}/edit`);
+  }
+
+  const result = await updateVocab(
+    c.env.DB,
+    user.id,
+    id,
+    term.slice(0, 120),
+    meaning.slice(0, 500)
+  );
+
+  if (result === 'missing') return c.notFound();
+  if (result === 'duplicate') {
+    return c.html(
+      <Layout title="단어 수정" user={user} active="words">
+        <EditPage
+          item={{ id, term: term.slice(0, 120), meaning: meaning.slice(0, 500) }}
+          duplicate
+        />
+      </Layout>,
+      409
+    );
+  }
+
+  return c.redirect('/words?state=edited');
 });
 
 words.post('/words/:id/delete', async (c) => {
